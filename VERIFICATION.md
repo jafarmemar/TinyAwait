@@ -63,6 +63,10 @@ The four examples also passed local C++20 syntax builds with an Arduino API shim
 
 GitHub Actions compiles the same examples with pinned Arduino-ESP32 3.3.11 as one real Arduino C++20-capable compile target. This is compile verification, not hardware execution.
 
+## CMake consumer integration
+
+A separate consumer project was configured with TinyAwait through `add_subdirectory()` and linked against `TinyAwait::TinyAwait`. The consumer build passed, and TinyAwait tests/benchmarks were confirmed to stay out of the consumer build by default. TinyAwait also no longer changes the parent project's global C++ standard setting.
+
 ## Measurements
 
 Eleven-run GCC medians after the idle fast path:

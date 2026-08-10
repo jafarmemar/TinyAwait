@@ -59,6 +59,10 @@ Async delayedWork() {
     co_await 500;
 }
 
+void startApplication() {
+    delayedWork();
+}
+
 void serviceLoop() {
     tinyawait::poll();
 }
@@ -73,6 +77,10 @@ When `ARDUINO` is defined, TinyAwait uses `millis()` automatically:
 
 Async delayedWork() {
     co_await 500;
+}
+
+void setup() {
+    delayedWork();
 }
 
 void loop() {
@@ -267,11 +275,13 @@ Install the repository ZIP with **Sketch → Include Library → Add .ZIP Librar
 
 ### CMake / generic C++
 
-Copy `src/TinyAwait.h` into your include path or add this repository as an interface dependency. Enable C++20:
+Copy `src/TinyAwait.h` into your include path, or add the repository with `add_subdirectory()` / `FetchContent` and link the interface target:
 
 ```cmake
-target_compile_features(your_target PRIVATE cxx_std_20)
+target_link_libraries(your_target PRIVATE TinyAwait::TinyAwait)
 ```
+
+When TinyAwait is included as a subproject, its tests and benchmarks are disabled by default so they do not become part of the consuming product build.
 
 ## Design limits
 
