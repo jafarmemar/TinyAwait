@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   host:
     strategy:
@@ -35,14 +39,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build and run ASan/UBSan
-        run: |
-          for t in test_basic test_wraparound test_capacity test_no_heap test_stress test_frame_size test_nested test_max_delay test_default_capacity; do
-            g++ -std=c++20 -Isrc -O1 -g -Wall -Wextra -Wpedantic -UNDEBUG \
-              -fno-exceptions -fno-rtti -fsanitize=address,undefined \
-              tests/${t}.cpp -o "$RUNNER_TEMP/${t}"
-            "$RUNNER_TEMP/${t}"
-          done
+      - name: Configure ASan/UBSan
+        run: >-
+          cmake -S . -B build-sanitize
+          -DCMAKE_CXX_COMPILER=g++
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+      - name: Build
+        run: cmake --build build-sanitize --parallel
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+        run: ctest --test-dir build-sanitize --output-on-failure
 
   size-build:
     runs-on: ubuntu-latest
@@ -61,10 +70,10 @@ jobs:
       - uses: arduino/setup-arduino-cli@v2
       - name: Show Arduino CLI version
         run: arduino-cli version
-      - name: Install Arduino-ESP32 compile target
+      - name: Install Arduino-ESP32 3.3.11 compile target
         run: |
           arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-          arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.11 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
       - name: Compile Arduino examples
         run: |
           for example in SingleDelay RepeatingDelay SequentialDelays NestedDelay; do

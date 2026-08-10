@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 #if __cplusplus < 202002L
 #error "TinyAwait requires C++20 or newer"
@@ -57,6 +58,7 @@ struct TimerSlot {
     std::coroutine_handle<> handle{};
 };
 inline TimerSlot timers[TINYAWAIT_MAX_TASKS]{};
+inline std::size_t active_timer_count = 0;
 
 inline void* alloc_frame(std::size_t size) noexcept {
 #ifdef TINYAWAIT_TESTING
@@ -86,6 +88,7 @@ inline bool add_timer(std::uint32_t delay, std::coroutine_handle<> handle) noexc
     for (auto& timer : timers) {
         if (!timer.handle) {
             timer = {static_cast<std::uint32_t>(TINYAWAIT_NOW_MS()), delay, handle};
+            ++active_timer_count;
             return true;
         }
     }
@@ -162,7 +165,24 @@ struct Async {
         FinalAwaiter final_suspend() const noexcept { return {detached}; }
         void return_void() const noexcept {}
         void unhandled_exception() const noexcept { TINYAWAIT_ON_ERROR(); }
-        detail::DelayAwaiter await_transform(std::uint32_t ms) const noexcept { return {ms}; }
+        template <typename T>
+            requires (std::is_integral_v<T> && !std::is_same_v<std::remove_cv_t<T>, bool>)
+        detail::DelayAwaiter await_transform(T ms) const noexcept {
+            if constexpr (std::is_signed_v<T>) {
+                if (ms < 0) {
+                    TINYAWAIT_ON_ERROR();
+                    return {0};
+                }
+            }
+            using unsigned_type = std::make_unsigned_t<T>;
+            if constexpr (sizeof(unsigned_type) > sizeof(std::uint32_t)) {
+                if (static_cast<unsigned_type>(ms) > static_cast<unsigned_type>(max_delay_ms)) {
+                    TINYAWAIT_ON_ERROR();
+                    return {0};
+                }
+            }
+            return {static_cast<std::uint32_t>(ms)};
+        }
         Async&& await_transform(Async&& child) const noexcept { return static_cast<Async&&>(child); }
     };
 
@@ -181,6 +201,7 @@ private:
 };
 
 inline void poll() noexcept {
+    if (detail::active_timer_count == 0) return;
     const auto now = static_cast<std::uint32_t>(TINYAWAIT_NOW_MS());
     for (auto& timer : detail::timers) {
         if (!timer.handle) continue;
@@ -188,6 +209,7 @@ inline void poll() noexcept {
         if (elapsed >= timer.remaining) {
             const auto handle = timer.handle;
             timer.handle = {};
+            --detail::active_timer_count;
             handle.resume();
         } else {
             timer.last = now;

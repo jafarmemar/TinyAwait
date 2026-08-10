@@ -1,128 +1,73 @@
 # TinyAwait Benchmarks
 
-All numbers here were measured for TinyAwait v1.1.0 on 2026-08-10. They are host regression measurements, not universal MCU claims.
+These measurements are regression data from the host test machine, not MCU timing guarantees.
 
 ## Environment
 
-- Architecture: x86_64
-- GCC: 14.2.0
-- Clang: 17.0.0
-- `poll()` benchmark optimization: `-O2`
-- linked-size proxy: `-Os -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -Wl,--gc-sections`
-- default `TINYAWAIT_MAX_TASKS`: 32
-- default `TINYAWAIT_FRAME_SIZE`: 128
+- x86_64 Linux
+- GCC 14.2.0
+- Clang 17.0.0
+- default `TINYAWAIT_MAX_TASKS=32`
+- default `TINYAWAIT_FRAME_SIZE=128`
 
 ## `poll()` cost
 
-`benchmarks/benchmark.cpp` calls `tinyawait::poll()` 5,000,000 times for each occupancy. Five complete runs were collected; the median is reported.
+`benchmarks/benchmark.cpp` runs 5,000,000 calls per occupancy. Eleven complete GCC runs were collected after the v1.1.1 idle fast-path change; the median is shown.
 
 | Active timers | Median ns / `poll()` |
 |---:|---:|
-| 0 | 20.466 ns |
-| 1 | 19.369 ns |
-| 32 | 27.527 ns |
+| 0 | **0.574 ns** |
+| 1 | **11.989 ns** |
+| 32 | **27.880 ns** |
 
-The timer scheduler intentionally scans a small fixed array. Even with the larger default capacity, the measured host difference between an empty table and 32 occupied slots remained small in this environment.
+The empty case returns before reading the clock or scanning the timer table. This is useful for firmware loops that call `poll()` continuously even when no TinyAwait task is waiting.
 
-## Resume overhead
-
-Thirty-two ready one-shot coroutines were resumed in one `poll()` call. Dividing the measured interval by 32 produced a median coarse estimate of:
-
-**37.875 ns per resume**
-
-This includes scheduler bookkeeping and host timing overhead.
+A coarse 32-coroutine ready-resume measurement produced a median of **27.250 ns/resume** on the same host.
 
 ## Coroutine frame size
 
-GCC 14.2, x86_64 benchmark instrumentation:
+GCC 14.2 host instrumentation measured:
 
-| Coroutine | Measured compiler frame |
-|---|---:|
-| simple sleeper | 56 B |
-| maximum observed after nested parent/child sample | 72 B |
+- simple sleeper: **56 B**
+- largest frame in the nested sample: **72 B**
 
-Frame size depends on compiler, ABI, optimization, function parameters, and local variables.
+Frame size is compiler-, ABI-, optimization-, parameter-, and local-variable-dependent. The default slot is 128 B; applications with larger coroutine frames must increase `TINYAWAIT_FRAME_SIZE`.
 
 ## Static memory
 
-Default configuration:
+On a typical 32-bit MCU, the default configuration is approximately:
 
 ```text
-TINYAWAIT_MAX_TASKS  = 32
-TINYAWAIT_FRAME_SIZE = 128
+frame pool       32 × 128 = 4096 B
+frame flags      32 × 1   =   32 B
+timer table      32 × 12  =  384 B
+active count                 ~4 B
+nominal total              ~4516 B
 ```
 
-The fixed state is primarily:
+Exact size depends on target alignment and coroutine-handle size. The pool is static and reusable; it does not grow, shrink, or fragment a heap.
 
-```text
-frame_pool = MAX_TASKS × aligned FRAME_SIZE
-timers     = MAX_TASKS × sizeof(TimerSlot)
-frame_used = MAX_TASKS × sizeof(bool)
-```
-
-On a typical 32-bit MCU where a coroutine handle is 4 B, `TimerSlot` is expected to be about 12 B:
-
-```text
-frame pool     32 × 128 = 4096 B
-frame flags    32 × 1   =   32 B
-timer table    32 × 12  =  384 B
-nominal total             4512 B
-```
-
-Target-specific alignment may change the exact total.
-
-A free slot is immediately reusable, but the fixed pool remains statically reserved. This is intentional: TinyAwait does not use a heap or dynamically shrink/grow its capacity.
-
-On the measured 64-bit host, `TimerSlot` is 16 B and `FrameSlot` is 128 B.
+On the measured x86_64 host, `TimerSlot` is 16 B and `FrameSlot` is 128 B.
 
 ## Host linked-size proxy
 
-GNU `size` output:
+`-Os -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -Wl,--gc-sections`:
 
 ```text
-   text   data    bss    dec    hex
-   1205    520      8   1733    6c5   baseline
-   2532    552   4680   7764   1e54   TinyAwait nested sample
+                  text   data    bss
+baseline          1205    520      8
+TinyAwait sample  2557    552   4680
+increment        +1352    +32  +4672
 ```
 
-Increment:
+The sample uses the default 32-task pool and nested child awaiting. ELF numbers are only a regression signal; actual MCU Flash/RAM usage depends on the target toolchain.
 
-- `.text`: +1327 B
-- `.data`: +32 B
-- `.bss`: +4672 B
+## Heap test
 
-The TinyAwait sample uses the default 32-task pool and exercises nested `co_await child()` flow. These ELF numbers are a regression signal, not MCU Flash/RAM measurements.
+`test_no_heap` performs 10,000 parent/child create/suspend/resume/complete sequences while global `operator new` is instrumented.
 
-## Heap-allocation test
+Result: **0 additional global heap allocations in the TinyAwait path.**
 
-`tests/test_no_heap.cpp` instruments global `operator new`, then performs 10,000 parent/child TinyAwait create/suspend/resume/complete sequences.
+## Stress and randomized scheduling
 
-Result in the verified host test run:
-
-**0 additional global heap allocations during the TinyAwait path.**
-
-## Maximum-delay test
-
-`tests/test_max_delay.cpp` schedules:
-
-```cpp
-co_await tinyawait::max_delay_ms;
-```
-
-where `max_delay_ms == 4,294,967,295`.
-
-The simulated clock crosses the 32-bit wrap and advances toward the deadline in several large chunks. The test verifies no early resume at `max_delay_ms - 1` and correct resume at exactly `max_delay_ms`.
-
-## Stress test
-
-`tests/test_stress.cpp` runs:
-
-- 250 rounds
-- 32 simultaneous coroutines per round
-- 100 suspend/resume cycles per coroutine
-
-Total scheduled suspension/resumption cycles exercised:
-
-**800,000 per test execution**
-
-After each round, both active frame and active timer counts must return to zero.
+The deterministic stress test executes **800,000** scheduled suspension/resumption cycles. A separate randomized test repeatedly schedules 32 timers with varied delays, including starts near the 32-bit clock wrap boundary, and verifies that no task resumes early or remains pending after its due time.

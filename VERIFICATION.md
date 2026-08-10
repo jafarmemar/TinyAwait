@@ -1,40 +1,41 @@
-# Verification Report — 2026-08-10
+# Verification Report — TinyAwait 1.1.1
 
-This report records verification results for TinyAwait v1.1.0.
+This report records the final host verification performed on 2026-08-10.
 
-## Implementation
+## Core configuration under review
 
-- Architecture: header-only, fixed-memory C++20 coroutine delay primitive.
-- Public API: `Async`, integer-millisecond `co_await`, `co_await child()`, `tinyawait::poll()`, `tinyawait::max_delay_ms`.
-- Core file: `src/TinyAwait.h`.
-- External library dependencies: none.
-- Default frame pool: 32 × 128 B.
-- Default failure behavior: fail-fast; no heap fallback.
-- Maximum single delay: 4,294,967,295 ms.
+- header-only C++20 implementation
+- fixed frame pool; default 32 × 128 B
+- no heap fallback
+- integer-millisecond `co_await`
+- parent/child `co_await child()`
+- 32-bit wrap-safe timer accounting
+- maximum single delay: 4,294,967,295 ms
+- idle `poll()` fast path
 
-## Host builds
+## Host compilers
 
-### GCC
+### GCC 14.2.0
 
-- Compiler: GCC 14.2.0
-- Architecture: x86_64
-- CMake Release build: passed
-- `-fno-exceptions`: passed
-- `-fno-rtti`: passed
-- warnings: `-Wall -Wextra -Wpedantic -Werror`, passed
-- 9/9 CTest tests passed
+- Release CMake build: passed
+- 12/12 CTest tests: passed
+- `-Wall -Wextra -Wpedantic -Werror`: passed
+- `-fno-exceptions -fno-rtti`: passed
 
-### Clang
+### Clang 17.0.0
 
-- Compiler: Clang 17.0.0
-- Architecture: x86_64
-- CMake Release build: passed
-- `-fno-exceptions`: passed
-- `-fno-rtti`: passed
-- warnings: `-Wall -Wextra -Wpedantic -Werror`, passed
-- 9/9 CTest tests passed
+- Release CMake build: passed
+- 12/12 CTest tests: passed
+- `-Wall -Wextra -Wpedantic -Werror`: passed
+- `-fno-exceptions -fno-rtti`: passed
 
-## Host tests
+## Sanitizers
+
+All 12 tests were built and run with GCC using AddressSanitizer and UndefinedBehaviorSanitizer.
+
+Result: **passed**.
+
+## Tests
 
 - `test_basic`
 - `test_wraparound`
@@ -45,132 +46,43 @@ This report records verification results for TinyAwait v1.1.0.
 - `test_nested`
 - `test_max_delay`
 - `test_default_capacity`
+- `test_delay_validation`
+- `test_randomized`
+- `test_multitu`
 
-Coverage includes:
+Coverage includes zero/short delays, sequential delays, child awaiting, immediate child completion, frame/timer reuse, default 32-way capacity, capacity failure, oversized frames, maximum delay, clock wraparound, no-heap operation, repeated lifecycle stress, invalid-delay handling, deterministic randomized timer schedules, and shared header-only state across multiple translation units.
 
-- immediate start
-- zero/1/500 ms awaits
-- sequential awaits
-- coroutine completion
-- infinite coroutine behavior
-- fixed-capacity failure behavior
-- frame and timer reuse
-- default 32-way simultaneous capacity
-- nested `co_await child()`
-- immediate child completion
-- parent continuation
-- child-frame destruction/reuse
-- maximum `uint32_t` delay
-- 32-bit clock wraparound
-- no premature resume
-- oversized-frame failure
-- no residual frame/timer slots after completion
-- no TinyAwait heap allocation in nested operation
-- repeated 32-way lifecycle stress
+## Arduino-style examples
 
-## Sanitizers
+The four examples also passed local C++20 syntax builds with an Arduino API shim using GCC and Clang:
 
-All nine tests were separately compiled and executed with GCC using:
+- `SingleDelay`
+- `RepeatingDelay`
+- `SequentialDelays`
+- `NestedDelay`
 
-```text
--fsanitize=address,undefined
-```
-
-Result: passed; no ASan/UBSan error was reported.
-
-ThreadSanitizer was not run because TinyAwait is single-threaded and not thread-safe by design.
-
-## Heap test
-
-Global `operator new` was instrumented during 10,000 parent/child create/suspend/resume/complete sequences.
-
-Result: **0 additional global heap allocations** in the tested TinyAwait path.
-
-## Stress test
-
-- 250 rounds
-- 32 concurrent coroutines per round
-- 100 suspension/resumption cycles per coroutine
-- 800,000 scheduled suspension/resumption cycles per test execution
-
-Result: passed; active frame and timer counts returned to zero after every round.
-
-## Maximum-delay verification
-
-The simulated clock schedules `tinyawait::max_delay_ms` (`4,294,967,295 ms`), crosses the 32-bit wrap boundary, advances in multiple chunks, verifies no resume one millisecond early, and verifies resume at the exact maximum delay.
-
-Result: passed with GCC, Clang, ASan, and UBSan host runs.
-
-## Nested-await verification
-
-`test_nested` verifies:
-
-1. Parent begins immediately.
-2. Child begins immediately.
-3. Parent suspends while awaiting the child.
-4. Only the child owns the active timer during that wait.
-5. Child completion resumes the parent.
-6. The child's frame is destroyed before the parent continues its next timed wait.
-7. All frames and timers return to zero at completion.
-8. A child that completes immediately can also be awaited safely.
-
-Result: passed with GCC, Clang, ASan, and UBSan host runs.
-
-## Arduino example compile verification
-
-GitHub Actions installs **Arduino-ESP32 3.3.11** and uses it as one real C++20-capable Arduino compile target for the supplied sketches.
-
-The current workflow compiles these four examples on every push:
-
-- `examples/SingleDelay`
-- `examples/RepeatingDelay`
-- `examples/SequentialDelays`
-- `examples/NestedDelay`
-
-The repository CI badge and Actions page show the result for the latest commit.
-
-This is compile verification, not physical hardware testing. Arduino-ESP32 is used here as a CI target; it is not the only intended platform for TinyAwait.
+GitHub Actions compiles the same examples with pinned Arduino-ESP32 3.3.11 as one real Arduino C++20-capable compile target. This is compile verification, not hardware execution.
 
 ## Measurements
 
-Median of five GCC benchmark runs:
+Eleven-run GCC medians after the idle fast path:
 
-- `poll()` / 0 active timers: 20.466 ns
-- `poll()` / 1 active timer: 19.369 ns
-- `poll()` / 32 active timers: 27.527 ns
-- coarse ready-coroutine resume estimate: 37.875 ns/resume
-- simple sleeper frame: 56 B
-- maximum observed frame after nested sample: 72 B
-- host `TimerSlot`: 16 B
-- host `FrameSlot`: 128 B
+- `poll()` / 0 active timers: 0.574 ns
+- `poll()` / 1 active timer: 11.989 ns
+- `poll()` / 32 active timers: 27.880 ns
+- coarse ready-resume estimate: 27.250 ns/resume
+- simple coroutine frame: 56 B
+- largest nested-sample frame: 72 B
 
-Host linked-size proxy (`-Os`, nested sample, default capacity 32):
+Host linked-size proxy: text 2557 B, data 552 B, bss 4680 B. Baseline: text 1205 B, data 520 B, bss 8 B.
 
-- baseline: text 1205 B, data 520 B, bss 8 B
-- TinyAwait: text 2532 B, data 552 B, bss 4680 B
-- increment: text +1327 B, data +32 B, bss +4672 B
+## Important production constraints
 
-These are x86_64 ELF measurements, not MCU Flash/RAM measurements.
-
-## Other embedded targets
-
-The core is designed for C++20-capable embedded toolchains with a monotonic millisecond clock. README integration examples cover Arduino-compatible environments, ESP-IDF, STM32/ARM Cortex-M, Raspberry Pi Pico SDK, and generic targets.
-
-Targets not explicitly listed as compile-verified or hardware-tested remain expected/unverified until tested with their real toolchain or hardware.
-
-## Resource-release semantics
-
-When a timer becomes ready, its timer slot is cleared before coroutine resumption. When a coroutine completes, its frame slot is returned to the TinyAwait pool. Nested child frames are likewise destroyed/released before the awaiting parent continues.
-
-The static pool itself remains reserved RAM for the configured maximum capacity. TinyAwait does not dynamically return that memory to a heap because the design avoids heap allocation and fragmentation.
-
-## Known limitations
-
-- C++20 `<coroutine>` support is mandatory.
-- Capacity is fixed at compile time; default is 32 simultaneously-live frames.
-- Frame size is fixed at compile time; default is 128 B per slot.
-- `Async` is void-only; child await does not return a value.
-- Single-threaded; not ISR-safe; `poll()` must not be reentrant.
-- Millisecond resolution.
-- The fixed pool reserves RAM even when slots are currently free.
-- Targets not listed as verified remain unverified until they are built or tested with their real toolchain/hardware.
+- TinyAwait is cooperative, single-threaded, and not ISR-safe.
+- `poll()` must not be called reentrantly.
+- All TinyAwait configuration macros must be identical in every translation unit.
+- `TINYAWAIT_ON_ERROR()` is a fatal hook in production and should not return.
+- The configured frame size must fit every compiler-generated coroutine frame.
+- Keep coroutine locals at normal ABI alignment unless an over-aligned layout has been verified with the target compiler. An explicit host probe showed that extended-alignment coroutine-frame behavior is compiler-dependent.
+- More than one full 32-bit millisecond clock cycle must not elapse between `poll()` calls while timers are active.
+- Targets not explicitly listed as verified remain expected until tested with their real toolchain or hardware.
