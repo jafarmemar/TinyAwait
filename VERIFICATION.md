@@ -116,19 +116,20 @@ Result: passed with GCC, Clang, ASan, and UBSan host runs.
 
 Result: passed with GCC, Clang, ASan, and UBSan host runs.
 
-## Arduino-ESP32 verification
+## Arduino example compile verification
 
-GitHub Actions installs **Arduino-ESP32 3.3.11** and compiles the supplied examples with the generic ESP32 board target.
+GitHub Actions installs **Arduino-ESP32 3.3.11** and uses it as one real C++20-capable Arduino compile target for the supplied sketches.
 
 Examples compile-verified in CI:
 
-- `examples/BlinkForever`
-- `examples/OnFor500ms`
-- `examples/NestedAwait`
+- `examples/SingleDelay`
+- `examples/RepeatingDelay`
+- `examples/SequentialDelays`
+- `examples/NestedDelay`
 
-Result: **passed**.
+Result: **passed** for the verified CI run before the example rename. The current workflow compiles the renamed four-example set on every push; the repository CI badge is the source of truth for the latest commit.
 
-This is compile verification, not physical hardware testing. The examples use an explicit/fallback GPIO pin instead of assuming every ESP32 board defines `LED_BUILTIN`.
+This is compile verification, not physical hardware testing. Arduino-ESP32 is used here as a CI target; it is not the only intended platform for TinyAwait.
 
 ## Measurements
 
@@ -153,9 +154,9 @@ These are x86_64 ELF measurements, not MCU Flash/RAM measurements.
 
 ## Other embedded targets
 
-ESP-IDF, Raspberry Pi Pico SDK, STM32, generic ARM/RISC-V, and classic AVR targets were not cross-compiled or hardware-tested as part of this report.
+The core is designed for C++20-capable embedded toolchains with a monotonic millisecond clock. README integration examples cover Arduino-compatible environments, ESP-IDF, STM32/ARM Cortex-M, Raspberry Pi Pico SDK, and generic targets.
 
-Their README entries remain marked as expected or unsupported rather than verified.
+Targets not explicitly listed as compile-verified or hardware-tested remain expected/unverified until tested with their real toolchain or hardware.
 
 ## Resource-release semantics
 
