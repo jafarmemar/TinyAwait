@@ -1,19 +1,18 @@
 # Verification Report — 2026-08-10
 
-This report records what was actually executed for TinyAwait v1.1.0.
+This report records verification results for TinyAwait v1.1.0.
 
 ## Implementation
 
 - Architecture: header-only, fixed-memory C++20 coroutine delay primitive.
 - Public API: `Async`, integer-millisecond `co_await`, `co_await child()`, `tinyawait::poll()`, `tinyawait::max_delay_ms`.
 - Core file: `src/TinyAwait.h`.
-- Core size: about 104 logical implementation lines under the README counting rule.
 - External library dependencies: none.
 - Default frame pool: 32 × 128 B.
 - Default failure behavior: fail-fast; no heap fallback.
 - Maximum single delay: 4,294,967,295 ms.
 
-## Host builds actually run
+## Host builds
 
 ### GCC
 
@@ -35,7 +34,7 @@ This report records what was actually executed for TinyAwait v1.1.0.
 - warnings: `-Wall -Wextra -Wpedantic -Werror`, passed
 - 9/9 CTest tests passed
 
-## Tests actually run
+## Host tests
 
 - `test_basic`
 - `test_wraparound`
@@ -69,7 +68,7 @@ Coverage includes:
 - no TinyAwait heap allocation in nested operation
 - repeated 32-way lifecycle stress
 
-## Sanitizers actually run
+## Sanitizers
 
 All nine tests were separately compiled and executed with GCC using:
 
@@ -79,7 +78,7 @@ All nine tests were separately compiled and executed with GCC using:
 
 Result: passed; no ASan/UBSan error was reported.
 
-ThreadSanitizer was not run because TinyAwait is intentionally single-threaded and not thread-safe.
+ThreadSanitizer was not run because TinyAwait is single-threaded and not thread-safe by design.
 
 ## Heap test
 
@@ -117,7 +116,21 @@ Result: passed with GCC, Clang, ASan, and UBSan host runs.
 
 Result: passed with GCC, Clang, ASan, and UBSan host runs.
 
-## Measurements actually run
+## Arduino-ESP32 verification
+
+GitHub Actions installs **Arduino-ESP32 3.3.11** and compiles the supplied examples with the generic ESP32 board target.
+
+Examples compile-verified in CI:
+
+- `examples/BlinkForever`
+- `examples/OnFor500ms`
+- `examples/NestedAwait`
+
+Result: **passed**.
+
+This is compile verification, not physical hardware testing. The examples use an explicit/fallback GPIO pin instead of assuming every ESP32 board defines `LED_BUILTIN`.
+
+## Measurements
 
 Median of five GCC benchmark runs:
 
@@ -138,17 +151,17 @@ Host linked-size proxy (`-Os`, nested sample, default capacity 32):
 
 These are x86_64 ELF measurements, not MCU Flash/RAM measurements.
 
-## Embedded verification status
+## Other embedded targets
 
-No ESP-IDF, Arduino-ESP32, Pico SDK, STM32, AVR, or generic ARM/RISC-V cross toolchain was installed in the local build environment used for this report. Therefore those targets are not labeled as locally compile-tested or hardware-tested here.
+ESP-IDF, Raspberry Pi Pico SDK, STM32, generic ARM/RISC-V, and classic AVR targets were not cross-compiled or hardware-tested as part of this report.
 
-GitHub Actions includes an Arduino-ESP32 compile job for all supplied Arduino examples. Its current status is visible in the repository's Actions tab and README CI badge.
+Their README entries remain marked as expected or unsupported rather than verified.
 
 ## Resource-release semantics
 
 When a timer becomes ready, its timer slot is cleared before coroutine resumption. When a coroutine completes, its frame slot is returned to the TinyAwait pool. Nested child frames are likewise destroyed/released before the awaiting parent continues.
 
-The **static pool itself remains reserved RAM** for the configured maximum capacity. TinyAwait does not dynamically return that memory to a heap because the design intentionally avoids heap allocation and fragmentation.
+The static pool itself remains reserved RAM for the configured maximum capacity. TinyAwait does not dynamically return that memory to a heap because the design avoids heap allocation and fragmentation.
 
 ## Known limitations
 
@@ -159,4 +172,4 @@ The **static pool itself remains reserved RAM** for the configured maximum capac
 - Single-threaded; not ISR-safe; `poll()` must not be reentrant.
 - Millisecond resolution.
 - The fixed pool reserves RAM even when slots are currently free.
-- Embedded compatibility outside the host verification remains expected/unverified until real toolchain or hardware builds are run.
+- Targets not listed as verified remain unverified until they are built or tested with their real toolchain/hardware.
