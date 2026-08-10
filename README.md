@@ -29,7 +29,7 @@ A timed sequence is easy to understand when it reads from top to bottom. The usu
 With TinyAwait:
 
 ```cpp
-Async turnOnFor500ms() {
+Async singleNonBlockingDelay() {
     ledOn();
     co_await 500;
     ledOff();
@@ -61,7 +61,7 @@ The delay is cooperative: only this coroutine pauses. The rest of the firmware k
 // Change this to the LED/GPIO pin for your board.
 constexpr int LED_PIN = 2;
 
-Async blinkForever() {
+Async repeatingNonBlockingDelay() {
     while (true) {
         digitalWrite(LED_PIN, HIGH);
         co_await 500;
@@ -73,7 +73,7 @@ Async blinkForever() {
 
 void setup() {
     pinMode(LED_PIN, OUTPUT);
-    blinkForever();
+    repeatingNonBlockingDelay();
 }
 
 void loop() {
@@ -87,32 +87,41 @@ void loop() {
 }
 ```
 
-`co_await 500` suspends only `blinkForever()`. It does **not** block `loop()`.
+`co_await 500` suspends only `repeatingNonBlockingDelay()`. It does **not** block `loop()`.
 
-## Examples
+## Delay patterns in the examples
 
-- [BlinkForever](examples/BlinkForever/BlinkForever.ino) — repeat an ON/OFF sequence without blocking the main loop
-- [OnFor500ms](examples/OnFor500ms/OnFor500ms.ino) — turn something on, wait 500 ms, then turn it off
-- [NestedAwait](examples/NestedAwait/NestedAwait.ino) — wait for one `Async` function from another
+| Pattern | Example function | What it demonstrates |
+|---|---|---|
+| Single non-blocking delay | `singleNonBlockingDelay()` | Suspend one coroutine for a fixed delay, then continue. |
+| Repeating non-blocking delay | `repeatingNonBlockingDelay()` | Repeat timed work without blocking the main loop. |
+| Child delay step | `childDelayStep()` | Put a timed step inside an awaitable child coroutine. |
+| Nested delay sequence | `nestedDelaySequence()` | Await a child coroutine, then continue with another delay. |
+
+The repository includes three small sketches:
+
+- [BlinkForever](examples/BlinkForever/BlinkForever.ino) — uses `repeatingNonBlockingDelay()` for a repeated ON/OFF sequence
+- [OnFor500ms](examples/OnFor500ms/OnFor500ms.ino) — uses `singleNonBlockingDelay()` for one non-blocking timed action
+- [NestedAwait](examples/NestedAwait/NestedAwait.ino) — uses `childDelayStep()` and `nestedDelaySequence()` to demonstrate parent/child awaiting
 
 ## Child await
 
 An `Async` function can wait for another `Async` function:
 
 ```cpp
-Async flashOnce() {
+Async childDelayStep() {
     ledOn();
     co_await 200;
     ledOff();
 }
 
-Async flashThenWait() {
-    co_await flashOnce();
+Async nestedDelaySequence() {
+    co_await childDelayStep();
     co_await 800;
 }
 ```
 
-`flashThenWait()` pauses until `flashOnce()` completes. The child frame is then returned to TinyAwait's fixed pool before the parent continues.
+`nestedDelaySequence()` pauses until `childDelayStep()` completes. The child frame is then returned to TinyAwait's fixed pool before the parent continues.
 
 This is still single-threaded and cooperative. It does not create a new thread or RTOS task.
 
