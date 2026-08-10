@@ -54,20 +54,20 @@ jobs:
             benchmarks/size_tinyawait.cpp -Wl,--gc-sections -o "$RUNNER_TEMP/tinyawait-size"
           size "$RUNNER_TEMP/tinyawait-size"
 
-  arduino-esp32:
+  arduino-examples:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: arduino/setup-arduino-cli@v2
       - name: Show Arduino CLI version
         run: arduino-cli version
-      - name: Install current stable Arduino-ESP32 core
+      - name: Install Arduino-ESP32 compile target
         run: |
           arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-      - name: Compile Arduino-ESP32 examples
+      - name: Compile Arduino examples
         run: |
-          for example in BlinkForever OnFor500ms NestedAwait; do
+          for example in SingleDelay RepeatingDelay SequentialDelays NestedDelay; do
             arduino-cli compile \
               --fqbn esp32:esp32:esp32 \
               --library "$GITHUB_WORKSPACE" \
