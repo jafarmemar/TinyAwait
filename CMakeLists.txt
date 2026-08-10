@@ -1,0 +1,33 @@
+cmake_minimum_required(VERSION 3.20)
+project(TinyAwait LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+add_library(TinyAwait INTERFACE)
+target_include_directories(TinyAwait INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_features(TinyAwait INTERFACE cxx_std_20)
+
+enable_testing()
+
+function(add_tinyawait_test name source)
+  add_executable(${name} ${source})
+  target_link_libraries(${name} PRIVATE TinyAwait)
+  target_compile_options(${name} PRIVATE -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -UNDEBUG)
+  add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
+add_tinyawait_test(test_basic tests/test_basic.cpp)
+add_tinyawait_test(test_wraparound tests/test_wraparound.cpp)
+add_tinyawait_test(test_capacity tests/test_capacity.cpp)
+add_tinyawait_test(test_no_heap tests/test_no_heap.cpp)
+add_tinyawait_test(test_stress tests/test_stress.cpp)
+add_tinyawait_test(test_frame_size tests/test_frame_size.cpp)
+add_tinyawait_test(test_nested tests/test_nested.cpp)
+add_tinyawait_test(test_max_delay tests/test_max_delay.cpp)
+add_tinyawait_test(test_default_capacity tests/test_default_capacity.cpp)
+
+add_executable(benchmark_tinyawait benchmarks/benchmark.cpp)
+target_link_libraries(benchmark_tinyawait PRIVATE TinyAwait)
+target_compile_options(benchmark_tinyawait PRIVATE -O2 -Wall -Wextra -Wpedantic -fno-exceptions -fno-rtti)

@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host:
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select compiler
+        run: |
+          if [ "${{ matrix.compiler }}" = gcc ]; then echo "CXX=g++" >> "$GITHUB_ENV"; else echo "CXX=clang++" >> "$GITHUB_ENV"; fi
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run ASan/UBSan
+        run: |
+          for t in test_basic test_wraparound test_capacity test_no_heap test_stress test_frame_size test_nested test_max_delay test_default_capacity; do
+            g++ -std=c++20 -Isrc -O1 -g -Wall -Wextra -Wpedantic -UNDEBUG \
+              -fno-exceptions -fno-rtti -fsanitize=address,undefined \
+              tests/${t}.cpp -o "$RUNNER_TEMP/${t}"
+            "$RUNNER_TEMP/${t}"
+          done
+
+  size-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Size-optimized build
+        run: |
+          g++ -std=c++20 -Isrc -Os -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
+            benchmarks/size_tinyawait.cpp -Wl,--gc-sections -o "$RUNNER_TEMP/tinyawait-size"
+          size "$RUNNER_TEMP/tinyawait-size"
+
+  arduino-esp32:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install current stable Arduino-ESP32 core
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+      - name: Compile BlinkForever
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 --libraries . examples/BlinkForever
+      - name: Compile OnFor500ms
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 --libraries . examples/OnFor500ms
+      - name: Compile NestedAwait
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 --libraries . examples/NestedAwait
