@@ -28,7 +28,7 @@ co_await child();
 
 The core is platform-neutral. Arduino-compatible environments can use `millis()` automatically; other targets provide a monotonic millisecond clock through one macro. There is no heap fallback, no RTOS task per delay, no dynamic timer container, and no external library dependency.
 
-> **Current version: 1.1.1.** Host tests are verified with GCC 14.2 and Clang 17. Arduino examples are compile-checked in CI using Arduino-ESP32 3.3.11 as one real C++20-capable Arduino target.
+> **Current version: 1.2.0.** Host correctness is verified with GCC 14.2 and Clang 17. Arduino examples are compile-checked in CI using Arduino-ESP32 3.3.11 as one real C++20-capable Arduino target.
 
 ## Highlights
 
@@ -39,9 +39,10 @@ The core is platform-neutral. Arduino-compatible environments can use `millis()`
 - heap-free TinyAwait execution path
 - 32 simultaneously-live coroutine frames by default
 - automatic frame/timer slot reuse
+- O(1) frame allocation and release
+- O(1) normal waiting `poll()` fast path until the nearest deadline can be due
 - full `uint32_t` single-delay range
 - wrap-safe 32-bit millisecond timing
-- O(1) idle `poll()` fast path when no timer is active
 - no thread, RTOS task, lock, mutex, executor, or dynamic container
 
 ## Quick Start
@@ -116,6 +117,8 @@ Async nestedDelay() {
 
 While the child is running, the parent remains suspended. When the child finishes, its frame is released back to the fixed pool before the parent continues.
 
+If you intentionally do not want to wait for a child, call the `Async` function without `co_await`; the returned task detaches when the temporary is destroyed and continues cooperatively through `tinyawait::poll()`.
+
 ## API
 
 ```cpp
@@ -147,7 +150,9 @@ Delay operands must be integral and in the range `0..4,294,967,295`. Negative va
 co_await tinyawait::max_delay_ms;
 ```
 
-The timer keeps remaining time in wrap-safe chunks. `poll()` must still run often enough that more than one complete 32-bit millisecond clock cycle does not pass between polls while timers are active.
+TinyAwait 1.2.0 keeps the full range while still avoiding a table scan on normal future `poll()` calls. The scheduler tracks a small wrap epoch plus each timer's absolute 32-bit deadline; it does not rely on a signed half-range comparison.
+
+`poll()` must still run often enough that a complete 32-bit millisecond counter cycle does not elapse between clock observations while timers are active.
 
 ## Capacity and memory
 
@@ -174,7 +179,9 @@ For a larger application:
 #include <TinyAwait.h>
 ```
 
-The default fixed state is roughly **4.5 KiB** on a typical 32-bit target. See [BENCHMARKS.md](BENCHMARKS.md) for the breakdown.
+The frame allocator uses a fixed pool. Never-used slots are taken with a compact bump index; released slots form an intrusive free-list whose link is stored inside the already-free frame bytes. There is no separate `frame_used[MAX_TASKS]` production array and no startup O(N) free-list construction.
+
+For a representative 32-bit target at the default 32-task/128-byte configuration, raw TinyAwait state is estimated at about **4499 B** before target-specific linker padding. See [BENCHMARKS.md](BENCHMARKS.md) for the assumptions and before/after table.
 
 Each compiler-generated coroutine frame must fit in `TINYAWAIT_FRAME_SIZE`. Complex parameters or locals can increase frame size.
 
@@ -231,7 +238,7 @@ Any other target can provide its own monotonic `uint32_t` millisecond source.
 |---|---|
 | Linux x86_64 / GCC 14.2 | **Verified — full host suite** |
 | Linux x86_64 / Clang 17 | **Verified — full host suite** |
-| Arduino examples / Arduino-ESP32 3.3.11 | **Compile-verified in CI** |
+| Arduino examples / Arduino-ESP32 3.3.11 | **Compile-verified in GitHub CI when the workflow is green** |
 | Other C++20-capable Arduino cores | Expected; toolchain support required |
 | ESP-IDF / ESP32 | Expected with a C++20-capable toolchain |
 | STM32 / ARM Cortex-M | Expected with a C++20-capable toolchain |
@@ -243,23 +250,25 @@ Any other target can provide its own monotonic `uint32_t` millisecond source.
 
 ## Multiple translation units
 
-TinyAwait uses C++17/20 inline state so one configured instance is shared across translation units. A dedicated multi-TU test is part of the host suite.
+TinyAwait uses inline state so one configured instance is shared across translation units. A dedicated multi-TU test is part of the host suite.
 
 All TinyAwait configuration macros must be identical in every translation unit. In larger projects, put the configuration and `#include <TinyAwait.h>` in one project header and include that everywhere.
 
 ## Performance
 
-Host regression medians after the v1.1.1 idle fast path:
+The 1.2.0 changes were evaluated as four states: baseline, nearest-deadline only, free-list only, and both together. The first deadline candidate was discarded after a new wrap/overshoot correctness test failed; the numbers below are from the corrected design.
 
-| Case | Median |
-|---|---:|
-| `poll()` with 0 active timers | **0.574 ns/call** |
-| `poll()` with 1 active timer | **11.989 ns/call** |
-| `poll()` with 32 active timers | **27.880 ns/call** |
+Representative x86_64 GCC 14.2 medians at the default capacity 32:
 
-These are x86_64 GCC 14.2 measurements, not MCU timing claims. The idle fast path adds only a tiny amount of linked code while avoiding the fixed-table scan when nothing is scheduled.
+| Case | 1.1.1 baseline | 1.2.0 |
+|---|---:|---:|
+| `poll()`, no active timers | 0.580 ns | 0.575 ns |
+| `poll()`, 32 waiting timers, same tick | 27.307 ns | **1.127 ns** |
+| `poll()`, 32 waiting timers, clock advances | 27.889 ns | **1.505 ns** |
+| alloc/free near 32-frame capacity | 20.200 ns | **0.918 ns** |
+| expire 32 timers at same deadline | 246.647 ns | **97.749 ns** |
 
-The no-heap test recorded **0 additional global heap allocations** over 10,000 nested TinyAwait sequences.
+These are host regression measurements, **not MCU timing claims**. At capacity 32, the size-oriented host proxy adds 276 B of `.text` with `-Os -flto` while representative raw 32-bit static state is about 17 B smaller. The one-frame allocator microbenchmark is slightly slower; that regression and the full 1/4/8/16/32/64/128/256/1000 tables are documented rather than hidden.
 
 See [BENCHMARKS.md](BENCHMARKS.md) and [VERIFICATION.md](VERIFICATION.md).
 
@@ -267,7 +276,7 @@ See [BENCHMARKS.md](BENCHMARKS.md) and [VERIFICATION.md](VERIFICATION.md).
 
 ### Arduino
 
-Install the repository ZIP with **Sketch → Include Library → Add .ZIP Library...**, or copy the project into your Arduino libraries directory.
+Install the repository ZIP with **Sketch -> Include Library -> Add .ZIP Library...**, or copy the project into your Arduino libraries directory.
 
 ### PlatformIO
 
@@ -293,11 +302,14 @@ TinyAwait stays small by intentionally not becoming a general async framework:
 - no cancellation, futures, queues, mutexes, executors, or thread pool
 - single-threaded; not ISR-safe
 - `poll()` is not reentrant
+- the timer table is still scanned when a deadline is actually due
 - over-aligned coroutine locals are toolchain-dependent; keep locals at normal ABI alignment unless verified on the target compiler
+
+The nearest-deadline fast path is intentionally not a timing wheel, heap, tree, executor, or dynamic scheduler.
 
 ## Tests
 
-The 12-test host suite covers basic/sequential delays, 32-bit wraparound, capacity failure, no-heap behavior, stress, frame-size failure, nested awaiting, maximum delay, default capacity, invalid delay values, deterministic randomized schedules, and multi-translation-unit state sharing.
+The 14-test host suite covers basic/sequential delays, 32-bit wraparound, capacity failure, no-heap behavior, stress, frame-size failure, nested awaiting, maximum delay, default capacity, invalid delay values, deterministic randomized schedules, multi-translation-unit state sharing, deadline fast-path edge cases, and free-list integrity/reuse.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -305,25 +317,17 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-CI runs GCC, Clang, ASan/UBSan, a size-optimized build, and all four Arduino examples.
+CI runs GCC, Clang, ASan/UBSan, an LTO size-oriented build, and all four Arduino examples. Performance timings are recorded but are not used as brittle nanosecond CI thresholds.
 
 ## Contributing
 
-Keep the core focused. Changes that add code, RAM, or runtime work should have a clear use case and tests or measurements where appropriate.
+Keep the core focused. Changes that add code, RAM, or runtime work should have a clear use case and measurements across CPU/RAM/Flash where appropriate.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-## References
-
-- Arduino library specification: https://docs.arduino.cc/arduino-cli/library-specification
-- PlatformIO library manifest: https://docs.platformio.org/en/latest/manifests/library-json/index.html
-- Espressif ESP-IDF C++ support: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/cplusplus.html
-- Espressif timer API: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/esp_timer.html
-- Raspberry Pi Pico SDK time APIs: https://www.raspberrypi.com/documentation/pico-sdk/hardware.html
 
 ---
 

@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Size-optimized build
         run: |
-          g++ -std=c++20 -Isrc -Os -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
+          g++ -std=c++20 -Isrc -Os -flto -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
             benchmarks/size_tinyawait.cpp -Wl,--gc-sections -o "$RUNNER_TEMP/tinyawait-size"
           size "$RUNNER_TEMP/tinyawait-size"
 

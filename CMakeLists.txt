@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(TinyAwait VERSION 1.1.1 LANGUAGES CXX)
+project(TinyAwait VERSION 1.2.0 LANGUAGES CXX)
 
 add_library(TinyAwait INTERFACE)
 add_library(TinyAwait::TinyAwait ALIAS TinyAwait)
@@ -40,12 +40,19 @@ if(TINYAWAIT_BUILD_TESTS)
   add_tinyawait_test(test_delay_validation tests/test_delay_validation.cpp)
   add_tinyawait_test(test_randomized tests/test_randomized.cpp)
   add_tinyawait_test(test_multitu tests/test_multitu_main.cpp tests/test_multitu_peer.cpp)
+  add_tinyawait_test(test_next_deadline tests/test_next_deadline.cpp)
+  add_tinyawait_test(test_freelist tests/test_freelist.cpp)
 endif()
 
 if(TINYAWAIT_BUILD_BENCHMARKS)
   add_executable(benchmark_tinyawait benchmarks/benchmark.cpp)
   target_link_libraries(benchmark_tinyawait PRIVATE TinyAwait::TinyAwait)
+
+  add_executable(benchmark_matrix benchmarks/benchmark_matrix.cpp)
+  target_link_libraries(benchmark_matrix PRIVATE TinyAwait::TinyAwait)
+
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(benchmark_tinyawait PRIVATE -O2 -Wall -Wextra -Wpedantic -fno-exceptions -fno-rtti)
+    target_compile_options(benchmark_matrix PRIVATE -O2 -Wall -Wextra -Wpedantic -fno-exceptions -fno-rtti)
   endif()
 endif()
