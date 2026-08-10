@@ -1,7 +1,5 @@
 name: CI
 
-# Diagnostic branch: no functional workflow change.
-
 on:
   push:
   pull_request:
