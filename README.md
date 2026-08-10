@@ -2,27 +2,31 @@
 
 **TinyAwait — tiny, heap-free `co_await` delays for embedded C++.**
 
-TinyAwait is a focused C++20 coroutine helper for microcontrollers and embedded software. It turns a non-blocking delay into one readable line:
+[![CI](https://github.com/jafarmemar/TinyAwait/actions/workflows/ci.yml/badge.svg)](https://github.com/jafarmemar/TinyAwait/actions/workflows/ci.yml)
+
+TinyAwait is a small C++20 coroutine helper for microcontrollers and embedded software. It turns a non-blocking delay into one readable line:
 
 ```cpp
 co_await 500;
 ```
 
-The value is always milliseconds. No `std::chrono` literal, no RTOS task per delay, no dynamic timer container, and no external async framework.
+The value is always milliseconds. There are no `std::chrono` literals, no RTOS task per delay, no dynamic timer container, and no external async framework.
 
-TinyAwait also supports simple parent/child flow:
+TinyAwait also supports parent/child flow:
 
 ```cpp
 co_await child();
 ```
 
-The core stays header-only, fixed-memory, cooperative, and intentionally small.
+The library is header-only, fixed-memory, cooperative, and deliberately focused on one job: readable non-blocking delays and simple async sequencing.
 
-> **Status:** v1.1 candidate. Host tests are verified with GCC 14.2 and Clang 17. Embedded targets are described conservatively unless actually compile-tested or hardware-tested.
+> **Status:** v1.1.0. Host tests are verified with GCC 14.2 and Clang 17. Embedded support is listed separately as compile-tested, hardware-tested, or expected.
 
 ## Why TinyAwait?
 
-Embedded state machines are efficient but can become hard to read. RTOS tasks are useful but can be excessive for short asynchronous sequences. TinyAwait provides a small middle ground: stackless C++20 coroutines with predictable fixed memory and a tiny `poll()` scheduler.
+Embedded state machines are efficient, but a sequence of timed steps can quickly become hard to read. RTOS tasks are useful when you need them, but they are often more machinery than a short asynchronous sequence requires.
+
+TinyAwait keeps that code close to the way you would write blocking code, while leaving the main loop free:
 
 ```cpp
 Async turnOnFor500ms() {
@@ -32,25 +36,23 @@ Async turnOnFor500ms() {
 }
 ```
 
-While that coroutine is waiting, your main loop can continue handling Wi-Fi, WebSocket traffic, sensors, GPIO, protocols, or other application work.
+While this coroutine waits, your main loop can continue handling Wi-Fi, WebSockets, sensors, GPIO, protocols, or other application work.
 
 ### Highlights
 
 - **One-line non-blocking delays:** `co_await 500;`
-- **Real child awaiting:** `co_await child();`
-- **Heap-free TinyAwait execution path** in the tested configuration.
-- **32 simultaneously-live `Async` frames by default.**
-- **Automatic slot reuse** as timers and coroutines finish.
-- **Maximum single delay:** `4,294,967,295 ms` — about **49 days, 17 hours, 2 minutes, 47.295 seconds**.
-- **Header-only** and dependency-free.
-- **No RTOS task or OS thread per coroutine.**
-- **No dynamic timer containers.**
-- **Wrap-safe 32-bit millisecond timing** when `poll()` continues to run normally.
-- Builds with `-fno-exceptions` and `-fno-rtti` on the verified host compilers.
+- **Child coroutines:** `co_await child();`
+- **Heap-free TinyAwait execution path** in the tested configuration
+- **32 simultaneously-live `Async` frames by default**
+- **Automatic timer/frame slot reuse** after completion
+- **Maximum single delay:** `4,294,967,295 ms` — about **49 days, 17 hours, 2 minutes, 47.295 seconds**
+- **Header-only** and dependency-free
+- **No RTOS task or OS thread per coroutine**
+- **No dynamic timer containers**
+- **Wrap-safe 32-bit millisecond timing** when `poll()` runs normally
+- Builds with `-fno-exceptions` and `-fno-rtti` on the verified host compilers
 
-TinyAwait intentionally does one small job well: make embedded delays and simple async sequencing readable without turning the project into an async framework.
-
-## 30-second quick start
+## Quick Start
 
 ```cpp
 #include <TinyAwait.h>
@@ -83,7 +85,15 @@ void loop() {
 
 `co_await 500` suspends only `blinkForever()`. It does **not** block `loop()`.
 
-## Simple child await
+## Examples
+
+The repository includes three small examples:
+
+- [BlinkForever](examples/BlinkForever/BlinkForever.ino) — repeat an ON/OFF sequence without blocking the main loop
+- [OnFor500ms](examples/OnFor500ms/OnFor500ms.ino) — turn something on, wait 500 ms, then turn it off
+- [NestedAwait](examples/NestedAwait/NestedAwait.ino) — wait for one `Async` function from another with `co_await child()`
+
+## Child await
 
 An `Async` function can wait for another `Async` function without blocking the main loop:
 
@@ -102,7 +112,7 @@ Async flashThenWait() {
 
 `flashThenWait()` pauses until `flashOnce()` completes. The child frame is then released back to TinyAwait's fixed pool before the parent continues.
 
-This is still cooperative and single-threaded. It does not create a new thread or RTOS task.
+This remains cooperative and single-threaded. It does not create another thread or RTOS task.
 
 ## API
 
@@ -147,9 +157,9 @@ So this is valid:
 co_await tinyawait::max_delay_ms;
 ```
 
-The timer internally consumes elapsed time in wrap-safe chunks. This allows the full `uint32_t` delay range while the underlying 32-bit millisecond clock wraps.
+The timer tracks elapsed time in wrap-safe chunks, so the full `uint32_t` delay range works even when the underlying 32-bit millisecond clock wraps.
 
-As with any 32-bit sampled clock, `tinyawait::poll()` must continue to run often enough that more than one complete 32-bit clock cycle does not pass between polls. In normal embedded event loops, `poll()` is called vastly more often than once every ~49.7 days.
+`tinyawait::poll()` still needs to run regularly. More than one complete 32-bit clock cycle must not pass between calls to `poll()`.
 
 ## Default capacity: 32 tasks
 
@@ -161,34 +171,32 @@ By default:
 
 You normally do **not** need to define it yourself.
 
-`TINYAWAIT_MAX_TASKS` is the maximum number of TinyAwait coroutine frames that may be alive at the same time. The timer table also has the same number of slots.
+`TINYAWAIT_MAX_TASKS` is the maximum number of TinyAwait coroutine frames that may be alive at the same time. The timer table has the same number of slots.
 
-For example, 100 different functions may exist in your firmware and they may execute thousands of delays over time. The limit concerns only simultaneously-live TinyAwait coroutine frames.
+You can have far more than 32 `Async` functions in a project and execute thousands of delays over time. The limit only applies to frames that are alive at the same moment.
 
 ### Automatic reuse
 
-When a timer finishes, its timer slot is cleared **before** the coroutine resumes. When a coroutine completes, its frame slot is returned to the fixed pool. Both can immediately be reused by another task.
+When a timer fires, its timer slot is cleared before the coroutine resumes. When a coroutine completes, its frame slot returns to the fixed pool. Both slots can be reused immediately.
 
 ```text
-Task A finishes  -> frame becomes free
+Task A finishes  -> frame slot becomes free
 Timer A fires    -> timer slot becomes free
 Task B starts    -> may reuse those slots
 ```
 
-Unused slots are not considered active and finished slots are reused automatically.
+### Fixed-memory behavior
 
-### Important fixed-memory detail
+TinyAwait is heap-free by design, so the configured pool is reserved statically at compile/link time. A completed slot becomes free for another TinyAwait task, but those bytes are not returned to the system heap.
 
-TinyAwait is deliberately heap-free, so the configured pool is **static memory reserved at compile/link time**. A free slot becomes reusable by TinyAwait, but its reserved bytes are not returned to the system heap. Returning memory dynamically would defeat the fixed-memory/no-fragmentation design.
-
-If a smaller MCU needs less reserved RAM, reduce the capacity before including the header:
+For a smaller MCU, reduce the capacity before including the header:
 
 ```cpp
 #define TINYAWAIT_MAX_TASKS 8
 #include <TinyAwait.h>
 ```
 
-If you need more:
+For a larger application:
 
 ```cpp
 #define TINYAWAIT_MAX_TASKS 64
@@ -205,9 +213,9 @@ Default:
 #define TINYAWAIT_FRAME_SIZE 128
 ```
 
-Each compiler-generated coroutine frame must fit within one slot. Simple tested coroutines are comfortably below this value on the measured x86_64 GCC build, but frame size depends on compiler, target, optimization, parameters, and local variables.
+Each compiler-generated coroutine frame must fit in one slot. Frame size depends on the compiler, target, optimization level, function parameters, and local variables.
 
-If a frame is too large or all frame slots are occupied, TinyAwait **does not fall back to the heap**. The default behavior is fail-fast. You can provide a project-specific fatal hook:
+If a frame is too large or all frame slots are occupied, TinyAwait does **not** fall back to the heap. The default behavior is fail-fast. A project can provide its own fatal hook:
 
 ```cpp
 #define TINYAWAIT_ON_ERROR() myFatalHandler()
@@ -216,7 +224,7 @@ If a frame is too large or all frame slots are occupied, TinyAwait **does not fa
 
 ## Lifetime model
 
-A normal call remains simple fire-and-forget:
+A normal call is fire-and-forget:
 
 ```cpp
 blinkForever();
@@ -230,15 +238,15 @@ When used as a child:
 co_await child();
 ```
 
-TinyAwait stores the parent's continuation, resumes the parent when the child finishes, and then releases the child's frame. No heap allocation or task object registry is required.
+TinyAwait stores the parent's continuation, resumes the parent when the child finishes, and releases the child's frame. No heap allocation or task registry is required.
 
-Nested `Async` calls consume one frame per simultaneously-live coroutine. For example, a parent waiting on one child usually occupies two frame slots while the child is active, but only the child needs a timer slot while it is waiting on a delay.
+Nested `Async` calls use one frame per simultaneously-live coroutine. A parent waiting on one child normally occupies two frame slots while the child is active, but only the child needs a timer slot while it waits on a delay.
 
 ## Clock integration
 
 ### Arduino-compatible environment
 
-When `ARDUINO` is defined, TinyAwait maps directly to `millis()`:
+When `ARDUINO` is defined, TinyAwait uses `millis()` automatically:
 
 ```cpp
 #include <TinyAwait.h>
@@ -286,22 +294,46 @@ std::uint32_t boardMillis();
 #include "TinyAwait.h"
 ```
 
-The important requirement is a monotonic millisecond counter and a compiler/toolchain with usable C++20 coroutine support.
+The core requirement is a monotonic millisecond counter and a toolchain with usable C++20 coroutine support.
 
 ## Compatibility
 
-| Target / ecosystem | Status in this package | Notes |
+| Target / ecosystem | Status | Notes |
 |---|---|---|
 | Linux x86_64, GCC 14.2 | **Host-simulated / verified** | All automated tests passed. |
 | Linux x86_64, Clang 17 | **Host-simulated / verified** | All automated tests passed. |
-| ESP-IDF / ESP32 family | **Expected; not locally compile-tested** | Use a current C++20-capable toolchain and `esp_timer_get_time()`. |
-| Arduino-ESP32 | **Expected; public CI configured** | Arduino clock maps to `millis()`. |
-| Raspberry Pi RP2040 / RP2350 | **Expected with suitable C++20 toolchain** | Map Pico SDK monotonic time. |
-| STM32 / ARM Cortex-M | **Expected with suitable C++20 toolchain** | Map HAL or another monotonic tick. |
-| Embedded RISC-V | **Expected with suitable C++20 toolchain** | Provide a monotonic clock. |
-| Classic AVR Uno/Nano/Mega toolchains | **Not advertised as supported** | Typical classic toolchains do not provide the required modern coroutine environment. |
+| Arduino-ESP32 | **CI compile target** | All supplied Arduino examples are compiled by GitHub Actions. |
+| ESP-IDF / ESP32 family | **Expected** | Use a current C++20-capable toolchain and `esp_timer_get_time()`. |
+| Raspberry Pi RP2040 / RP2350 | **Expected with suitable toolchain** | Map the Pico SDK monotonic clock. |
+| STM32 / ARM Cortex-M | **Expected with suitable toolchain** | Map HAL or another monotonic tick. |
+| Embedded RISC-V | **Expected with suitable toolchain** | Provide a monotonic millisecond clock. |
+| Classic AVR Uno/Nano/Mega toolchains | **Not advertised as supported** | Typical classic toolchains do not provide the required coroutine environment. |
 
-"Expected" does not mean hardware-tested. TinyAwait does not fabricate compatibility results.
+`Expected` means the integration is straightforward from the available toolchain/API, not that hardware testing has been completed.
+
+## Installation and builds
+
+### Arduino / Arduino-ESP32
+
+TinyAwait is a normal source library. No precompiled firmware or architecture-specific binary is required.
+
+Install it with **Sketch → Include Library → Add .ZIP Library...**, or copy the `TinyAwait` folder into your Arduino libraries directory. Arduino compiles the header as part of your sketch for the selected board.
+
+The official Arduino library format supports precompiled `.a`/`.so` files, but they are optional. TinyAwait does not use them because the project is header-only and intended to remain portable across supported toolchains.
+
+### ESP-IDF
+
+TinyAwait does not need a prebuilt ESP32 binary. Add `src/TinyAwait.h` to your component/include path and use the ESP-IDF clock adapter shown above. The library is compiled as part of the firmware build.
+
+### Generic CMake / C++
+
+Copy `src/TinyAwait.h` into your include path and compile with C++20:
+
+```cmake
+target_compile_features(your_target PRIVATE cxx_std_20)
+```
+
+Provide `TINYAWAIT_NOW_MS()` before including the header unless the Arduino environment supplies `millis()`.
 
 ## Memory model
 
@@ -318,7 +350,7 @@ With the default `32 × 128-byte` frame pool:
 - frame payload storage: **4096 B**
 - frame-use flags: typically **32 B**
 - on a typical 32-bit MCU with a 4-byte coroutine handle, a timer slot is expected to be about **12 B**, or roughly **384 B** for 32 slots
-- nominal fixed state is therefore about **4512 B**, before target-specific padding/alignment
+- nominal fixed state: about **4512 B**, before target-specific padding/alignment
 
 This is reserved static memory, not heap memory.
 
@@ -330,17 +362,17 @@ TinyAwait overrides coroutine frame allocation and serves frames from the fixed 
 
 The host no-heap test performs 10,000 parent/child create/suspend/resume/complete sequences while global `operator new` is instrumented.
 
-Measured TinyAwait-path result:
+Measured result for the TinyAwait path:
 
 ```text
 0 additional global heap allocations
 ```
 
-Your own code inside a coroutine can still allocate memory; TinyAwait cannot prevent allocations performed by application code or other libraries.
+Application code inside a coroutine can still allocate memory; TinyAwait only controls its own coroutine/timer path.
 
-## Performance measurements
+## Performance
 
-Measured on the supplied x86_64 build environment with GCC 14.2. These are host regression measurements, **not MCU timing claims**.
+These measurements come from the supplied x86_64 GCC 14.2 build environment. They are useful for regression tracking, not as MCU timing claims.
 
 Median of five runs, 5,000,000 `poll()` calls per occupancy measurement:
 
@@ -351,12 +383,12 @@ Median of five runs, 5,000,000 `poll()` calls per occupancy measurement:
 | `poll()` — 32 active timers | **27.527 ns/call** |
 | Coarse ready-coroutine resume estimate | **37.875 ns/resume** |
 
-Measured GCC 14.2 / x86_64 coroutine frames in the benchmark build:
+Measured GCC 14.2 / x86_64 coroutine frames:
 
 - simple sleeper: **56 B**
-- largest frame observed after adding the nested parent/child example: **72 B**
+- largest frame observed in the nested parent/child sample: **72 B**
 
-Both fit inside the default 128-byte slot in this host build. Real MCU/compiler frame sizes can differ.
+Both fit inside the default 128-byte slot in this host build. MCU/compiler frame sizes can differ.
 
 ### Host code-size proxy (`-Os`)
 
@@ -368,25 +400,25 @@ GNU `size` on x86_64 ELF:
 | TinyAwait nested sample, default 32 | 2532 B | 552 B | 4680 B |
 | Increment | **+1327 B** | **+32 B** | **+4672 B** |
 
-The `.bss` increase mostly reflects the intentionally reserved 32-slot fixed pool. These values are for regression tracking; target firmware map files are the real source for MCU Flash/RAM measurements.
+The `.bss` increase mostly comes from the intentionally reserved 32-slot fixed pool.
 
-See [BENCHMARKS.md](BENCHMARKS.md).
+More details: [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Core size
 
-The production implementation remains a single header. Using a simple logical-line count that excludes blank lines, comments, preprocessor-only lines, test instrumentation, namespace-only lines, and brace-only lines, the v1.1 core is about **104 logical implementation lines**.
+The production implementation is a single header. Under the repository's logical-line counting rule, v1.1 is about **104 logical implementation lines**.
 
-The small increase versus the first candidate buys real parent/child `co_await` lifetime handling and robust full-range 32-bit delays without introducing a scheduler framework, dynamic container, or external dependency.
+The parent/child await support and full-range 32-bit delay handling are included without adding a dynamic scheduler, container, or external dependency.
 
 ## Timer implementation
 
-Each timer stores the last sampled 32-bit time and its remaining delay. On every `poll()`, TinyAwait subtracts the wrap-safe elapsed delta from the remaining time. This avoids the narrow-deadline problem that a single start/deadline comparison can have near the full 32-bit delay limit.
+Each timer stores the last sampled 32-bit time and its remaining delay. On each `poll()`, TinyAwait subtracts the wrap-safe elapsed delta from the remaining time.
 
-A timer slot is cleared before its coroutine is resumed, so the resumed coroutine can immediately schedule another delay and reuse available capacity.
+A timer slot is cleared before its coroutine resumes, so that coroutine can immediately schedule another delay and reuse available capacity.
 
 ## Concurrency / ISR rules
 
-TinyAwait is intentionally cooperative and single-threaded:
+TinyAwait is cooperative and single-threaded:
 
 - call `tinyawait::poll()` from one execution context
 - start `Async` functions from that same context
@@ -394,46 +426,24 @@ TinyAwait is intentionally cooperative and single-threaded:
 - do not call `poll()` reentrantly from a TinyAwait coroutine
 - do not access one TinyAwait instance concurrently from multiple RTOS tasks/threads
 
-No locks, atomics, mutexes, or hidden critical sections are added.
+There are no locks, atomics, mutexes, or hidden critical sections.
 
 ## Limitations
 
-- Requires C++20 coroutine support and `<coroutine>`.
-- Fixed maximum number of simultaneously-live coroutine frames.
-- Fixed maximum frame size.
-- Millisecond resolution.
-- `Async` is a void task; child await does not return a value.
-- No cancellation, futures, queues, mutexes, executors, or thread pool.
-- Single-threaded and not ISR-safe.
-- Complex coroutine locals can increase compiler-generated frame size.
+- Requires C++20 coroutine support and `<coroutine>`
+- Fixed maximum number of simultaneously-live coroutine frames
+- Fixed maximum frame size
+- Millisecond resolution
+- `Async` is a void task; child await does not return a value
+- No cancellation, futures, queues, mutexes, executors, or thread pool
+- Single-threaded and not ISR-safe
+- Complex coroutine locals can increase compiler-generated frame size
 
-Those limits are intentional: they keep TinyAwait small and predictable.
-
-## Installation
-
-### Arduino ZIP
-
-Use **Sketch → Include Library → Add .ZIP Library...** and select the release ZIP, or copy the `TinyAwait` directory into your Arduino libraries directory.
-
-### Generic CMake / C++
-
-Copy `src/TinyAwait.h` into your include path and compile with C++20:
-
-```cmake
-target_compile_features(your_target PRIVATE cxx_std_20)
-```
-
-Provide `TINYAWAIT_NOW_MS()` before including the header unless the Arduino environment supplies `millis()`.
-
-## Examples
-
-- `examples/BlinkForever`
-- `examples/OnFor500ms`
-- `examples/NestedAwait`
+These tradeoffs keep the implementation small and predictable.
 
 ## Tests
 
-The automated host suite verifies:
+The host suite covers:
 
 - immediate coroutine start
 - `co_await 0`, `1`, and `500`
@@ -467,26 +477,21 @@ ctest --test-dir build --output-on-failure
 
 ## CI
 
-GitHub Actions is configured to:
+GitHub Actions builds/tests the host suite with GCC and Clang, runs ASan/UBSan, builds the size-optimized sample, and compiles all three Arduino examples for Arduino-ESP32.
 
-- build/test with GCC and Clang
-- run ASan + UBSan host tests
-- build a size-optimized sample
-- compile all three Arduino examples with Arduino-ESP32
+Use the CI badge at the top of this README, or open the repository's **Actions** tab, to see the current result for the latest commit.
 
-## Name
+## Project name
 
-`TinyAwait` still fits the project well: it directly describes the two defining ideas — a tiny implementation and readable `co_await`-based embedded flow. A web/GitHub search on 2026-08-10 did not surface an obvious serious exact-name conflict in the embedded C++ library space. This is not a trademark guarantee, so the name should be rechecked before formal registry/trademark use.
+`TinyAwait` still describes the project well: a small embedded helper centered on `co_await`. A naming check performed before v1.1 did not find an obvious exact-name conflict in the embedded C++ library space.
 
-## About performance claims
+## Performance claims
 
-TinyAwait deliberately avoids claims such as "zero overhead", "fastest", "works everywhere", or "the first complete await library". Embedded coroutine work and other coroutine libraries already exist, and performance depends on target hardware and compiler.
-
-The project instead publishes things it can actually defend: measured host overhead, fixed memory, tested heap behavior, explicit limitations, and a very small API.
+The README sticks to measured behavior and explicit limitations. Timing and memory numbers are labeled with the platform they came from, and embedded targets are not marked as verified until they have actually been built or tested there.
 
 ## Contributing
 
-Keep TinyAwait focused. New features should justify their code size, RAM, and runtime cost with tests or measurements.
+Keep TinyAwait focused. Features that add code, RAM, or runtime cost should come with a clear reason and tests or measurements where appropriate.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -494,9 +499,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 MIT. See [LICENSE](LICENSE).
 
-## Research references
+## References
 
-Compatibility and design notes were checked against current primary/official material where possible:
+Compatibility and integration notes were checked against current primary/official material where possible:
 
 - Espressif ESP-IDF C++ support: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/cplusplus.html
 - Espressif timer API: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/esp_timer.html
