@@ -6,20 +6,20 @@ constexpr int LED_PIN = 2;  // Change this for boards without a built-in LED def
 constexpr int LED_PIN = LED_BUILTIN;
 #endif
 
-Async flashOnce() {
+Async childDelayStep() {
   digitalWrite(LED_PIN, HIGH);
   co_await 200;
   digitalWrite(LED_PIN, LOW);
 }
 
-Async flashThenWait() {
-  co_await flashOnce();
+Async nestedDelaySequence() {
+  co_await childDelayStep();
   co_await 800;
 }
 
 void setup() {
   pinMode(LED_PIN, OUTPUT);
-  flashThenWait();
+  nestedDelaySequence();
 }
 
 void loop() {
