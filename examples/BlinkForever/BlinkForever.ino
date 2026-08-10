@@ -6,7 +6,7 @@ constexpr int LED_PIN = 2;  // Change this for boards without a built-in LED def
 constexpr int LED_PIN = LED_BUILTIN;
 #endif
 
-Async blinkForever() {
+Async repeatingNonBlockingDelay() {
   while (true) {
     digitalWrite(LED_PIN, HIGH);
     co_await 500;
@@ -17,7 +17,7 @@ Async blinkForever() {
 
 void setup() {
   pinMode(LED_PIN, OUTPUT);
-  blinkForever();
+  repeatingNonBlockingDelay();
 }
 
 void loop() {
