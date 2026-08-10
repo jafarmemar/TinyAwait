@@ -1,6 +1,6 @@
 # Verification Report — 2026-08-10
 
-This report records what was actually executed while assembling the TinyAwait v1.1 candidate.
+This report records what was actually executed for TinyAwait v1.1.0.
 
 ## Implementation
 
@@ -140,9 +140,9 @@ These are x86_64 ELF measurements, not MCU Flash/RAM measurements.
 
 ## Embedded verification status
 
-No ESP-IDF, Arduino-ESP32, Pico SDK, STM32, AVR, or generic ARM/RISC-V cross toolchain was installed in the local build environment. Therefore no embedded target is falsely labeled as locally compile-tested or hardware-tested.
+No ESP-IDF, Arduino-ESP32, Pico SDK, STM32, AVR, or generic ARM/RISC-V cross toolchain was installed in the local build environment used for this report. Therefore those targets are not labeled as locally compile-tested or hardware-tested here.
 
-GitHub Actions includes an Arduino-ESP32 compile job for all supplied Arduino examples.
+GitHub Actions includes an Arduino-ESP32 compile job for all supplied Arduino examples. Its current status is visible in the repository's Actions tab and README CI badge.
 
 ## Resource-release semantics
 
