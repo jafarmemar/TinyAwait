@@ -1,22 +1,28 @@
 #include <TinyAwait.h>
 
+#ifndef LED_BUILTIN
+constexpr int LED_PIN = 2;  // Change this for boards without a built-in LED definition.
+#else
+constexpr int LED_PIN = LED_BUILTIN;
+#endif
+
 Async flashOnce() {
-    digitalWrite(LED_BUILTIN, HIGH);
-    co_await 200;
-    digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(LED_PIN, HIGH);
+  co_await 200;
+  digitalWrite(LED_PIN, LOW);
 }
 
 Async flashThenWait() {
-    co_await flashOnce();  // wait for the child coroutine to finish
-    co_await 800;
+  co_await flashOnce();
+  co_await 800;
 }
 
 void setup() {
-    pinMode(LED_BUILTIN, OUTPUT);
-    flashThenWait();
+  pinMode(LED_PIN, OUTPUT);
+  flashThenWait();
 }
 
 void loop() {
-    tinyawait::poll();
-    // networking, sensors, GPIO, and application logic stay responsive here
+  tinyawait::poll();
+  // Networking, sensors, GPIO, and application logic stay responsive here.
 }
