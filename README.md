@@ -1,16 +1,16 @@
 # TinyAwait
 
-**TinyAwait — tiny, heap-free C++20 `co_await` delays for embedded systems.**
+**TinyAwait — tiny, heap-free C++20 `co_await` delays for microcontrollers and embedded systems.**
 
 [![CI](https://github.com/jafarmemar/TinyAwait/actions/workflows/ci.yml/badge.svg)](https://github.com/jafarmemar/TinyAwait/actions/workflows/ci.yml)
 
-TinyAwait is a small header-only coroutine helper for microcontrollers. It gives embedded C++ code a readable, non-blocking delay:
+TinyAwait is a small header-only coroutine helper for readable, non-blocking delays in embedded C++:
 
 ```cpp
 co_await 500;
 ```
 
-The number is milliseconds. While the coroutine is waiting, your main loop stays free for networking, sensors, GPIO, protocols, WebSockets, or other application work.
+The value is milliseconds. Only the current coroutine pauses; the rest of the application can keep running.
 
 TinyAwait also supports simple parent/child sequencing:
 
@@ -18,25 +18,25 @@ TinyAwait also supports simple parent/child sequencing:
 co_await child();
 ```
 
+The core is platform-neutral. Arduino-compatible environments can use `millis()` automatically, while other targets provide a monotonic millisecond clock through one macro. This makes the same small API suitable for C++20-capable Arduino boards, ESP32, ARM/STM32, RP2040/RP2350, RISC-V, and other embedded toolchains.
+
 There is no heap fallback, no RTOS task per delay, no dynamic timer container, and no external library dependency.
 
-> **Current version:** 1.1.0 — host-tested with GCC 14.2 and Clang 17, and compile-verified in GitHub Actions with Arduino-ESP32 3.3.11.
+> **Current version:** 1.1.0. The host test suite is verified with GCC 14.2 and Clang 17. The Arduino examples are also compile-verified in CI using Arduino-ESP32 3.3.11 as one real embedded compile target. Other platforms are clearly marked as expected until tested with their own toolchains or hardware.
 
 ## Why TinyAwait?
 
-A timed sequence is easy to understand when it reads from top to bottom. The usual embedded alternative is often a state machine spread across several branches and timestamps.
-
-With TinyAwait:
+Timed embedded code often starts simple and becomes harder to follow as timestamps, states, and branches accumulate. TinyAwait keeps short asynchronous sequences readable without blocking the main loop.
 
 ```cpp
-Async singleNonBlockingDelay() {
-    ledOn();
+Async delayedAction() {
+    outputOn();
     co_await 500;
-    ledOff();
+    outputOff();
 }
 ```
 
-The delay is cooperative: only this coroutine pauses. The rest of the firmware keeps running.
+The coroutine pauses at `co_await 500`; networking, sensors, GPIO handling, protocol work, or other application logic can continue elsewhere.
 
 ### Highlights
 
@@ -47,81 +47,69 @@ The delay is cooperative: only this coroutine pauses. The rest of the firmware k
 - no TinyAwait heap allocation in the verified execution path
 - fixed and predictable memory use
 - 32 simultaneously-live coroutine frames by default
-- timer and frame slots are automatically reused after completion
+- timer and frame slots are reused automatically after completion
 - maximum single delay: `4,294,967,295 ms`
 - wrap-safe 32-bit millisecond timing
-- no thread, task, lock, mutex, or executor per coroutine
+- no thread, RTOS task, lock, mutex, or executor per coroutine
 - verified with `-fno-exceptions` and `-fno-rtti` on the host test compilers
 
 ## Quick Start
 
+For a generic embedded target, provide a monotonic millisecond clock before including TinyAwait:
+
 ```cpp
+#include <cstdint>
+
+std::uint32_t boardMillis();
+#define TINYAWAIT_NOW_MS() boardMillis()
 #include <TinyAwait.h>
 
-// Change this to the LED/GPIO pin for your board.
-constexpr int LED_PIN = 2;
-
-Async repeatingNonBlockingDelay() {
-    while (true) {
-        digitalWrite(LED_PIN, HIGH);
-        co_await 500;
-
-        digitalWrite(LED_PIN, LOW);
-        co_await 500;
-    }
+Async delayedWork() {
+    co_await 500;
 }
 
-void setup() {
-    pinMode(LED_PIN, OUTPUT);
-    repeatingNonBlockingDelay();
-}
-
-void loop() {
+void serviceLoop() {
     tinyawait::poll();
-
-    // Wi-Fi
-    // WebSocket
-    // sensors
-    // GPIO
-    // application logic
 }
 ```
 
-`co_await 500` suspends only `repeatingNonBlockingDelay()`. It does **not** block `loop()`.
+On an Arduino-compatible target, `millis()` is selected automatically:
 
-## Delay patterns in the examples
+```cpp
+#include <TinyAwait.h>
+```
 
-| Pattern | Example function | What it demonstrates |
+Then call `tinyawait::poll()` regularly from `loop()` or from the cooperative execution context used by your application.
+
+## Examples
+
+The repository contains four small Arduino-style sketches. They are intentionally simple so each one demonstrates one idea:
+
+| Example | Main function | What it demonstrates |
 |---|---|---|
-| Single non-blocking delay | `singleNonBlockingDelay()` | Suspend one coroutine for a fixed delay, then continue. |
-| Repeating non-blocking delay | `repeatingNonBlockingDelay()` | Repeat timed work without blocking the main loop. |
-| Child delay step | `childDelayStep()` | Put a timed step inside an awaitable child coroutine. |
-| Nested delay sequence | `nestedDelaySequence()` | Await a child coroutine, then continue with another delay. |
+| [SingleDelay](examples/SingleDelay/SingleDelay.ino) | `singleDelay()` | One non-blocking delay, then continue. |
+| [RepeatingDelay](examples/RepeatingDelay/RepeatingDelay.ino) | `repeatingDelay()` | Repeated timed work without blocking the main loop. |
+| [SequentialDelays](examples/SequentialDelays/SequentialDelays.ino) | `sequentialDelays()` | Several delays written in a readable top-to-bottom sequence. |
+| [NestedDelay](examples/NestedDelay/NestedDelay.ino) | `childDelay()` / `nestedDelay()` | Await a child coroutine, then continue in the parent. |
 
-The repository includes three small sketches:
-
-- [BlinkForever](examples/BlinkForever/BlinkForever.ino) — uses `repeatingNonBlockingDelay()` for a repeated ON/OFF sequence
-- [OnFor500ms](examples/OnFor500ms/OnFor500ms.ino) — uses `singleNonBlockingDelay()` for one non-blocking timed action
-- [NestedAwait](examples/NestedAwait/NestedAwait.ino) — uses `childDelayStep()` and `nestedDelaySequence()` to demonstrate parent/child awaiting
+The sketches use Arduino GPIO only to make the timing visible. The TinyAwait API itself is not tied to Arduino or ESP32.
 
 ## Child await
 
 An `Async` function can wait for another `Async` function:
 
 ```cpp
-Async childDelayStep() {
-    ledOn();
+Async childDelay() {
     co_await 200;
-    ledOff();
 }
 
-Async nestedDelaySequence() {
-    co_await childDelayStep();
+Async nestedDelay() {
+    co_await childDelay();
     co_await 800;
 }
 ```
 
-`nestedDelaySequence()` pauses until `childDelayStep()` completes. The child frame is then returned to TinyAwait's fixed pool before the parent continues.
+`nestedDelay()` pauses until `childDelay()` completes. The child frame is then returned to TinyAwait's fixed pool before the parent continues.
 
 This is still single-threaded and cooperative. It does not create a new thread or RTOS task.
 
@@ -202,7 +190,7 @@ Use the same configuration in every translation unit that includes TinyAwait.
 
 The pool is static memory reserved at compile/link time. When a task finishes, its slot becomes immediately reusable by TinyAwait, but those bytes are not returned to the system heap.
 
-That is a design choice: fixed memory avoids runtime allocation and fragmentation and keeps the maximum RAM cost known in advance.
+That keeps the maximum RAM cost known in advance and avoids runtime allocation and fragmentation.
 
 ## Frame size
 
@@ -225,6 +213,8 @@ A project can provide its own failure hook:
 
 ## Clock integration
 
+TinyAwait only needs a monotonic millisecond counter.
+
 ### Arduino-compatible environment
 
 When `ARDUINO` is defined, TinyAwait uses `millis()` automatically:
@@ -232,6 +222,8 @@ When `ARDUINO` is defined, TinyAwait uses `millis()` automatically:
 ```cpp
 #include <TinyAwait.h>
 ```
+
+This applies to Arduino-compatible environments whose C++ toolchain provides C++20 coroutine support.
 
 ### ESP-IDF
 
@@ -244,7 +236,13 @@ When `ARDUINO` is defined, TinyAwait uses `millis()` automatically:
 #include "TinyAwait.h"
 ```
 
-Call `tinyawait::poll()` from your normal application loop/task.
+### STM32 HAL / ARM Cortex-M
+
+```cpp
+#include "stm32xxxx_hal.h"
+#define TINYAWAIT_NOW_MS() HAL_GetTick()
+#include "TinyAwait.h"
+```
 
 ### Raspberry Pi Pico SDK
 
@@ -254,14 +252,6 @@ Call `tinyawait::poll()` from your normal application loop/task.
 
 #define TINYAWAIT_NOW_MS() \
     static_cast<std::uint32_t>(time_us_64() / 1000ULL)
-#include "TinyAwait.h"
-```
-
-### STM32 HAL
-
-```cpp
-#include "stm32xxxx_hal.h"
-#define TINYAWAIT_NOW_MS() HAL_GetTick()
 #include "TinyAwait.h"
 ```
 
@@ -283,18 +273,19 @@ The target needs a monotonic millisecond counter and a toolchain with usable C++
 |---|---|---|
 | Linux x86_64, GCC 14.2 | **Verified** | Full automated host suite passed. |
 | Linux x86_64, Clang 17 | **Verified** | Full automated host suite passed. |
-| Arduino-ESP32 3.3.11 | **Compile-verified in CI** | All supplied Arduino examples compile with the generic ESP32 target. |
+| Arduino examples via Arduino-ESP32 3.3.11 | **Compile-verified in CI** | All four supplied Arduino-style examples compile. |
+| Other Arduino-compatible C++20 targets | **Expected with suitable toolchain** | `millis()` integration is automatic; coroutine support is still required. |
 | ESP-IDF / ESP32 family | **Expected** | Use a current C++20-capable toolchain and `esp_timer_get_time()`. |
-| Raspberry Pi RP2040 / RP2350 | **Expected with suitable toolchain** | Map the Pico SDK monotonic clock. |
 | STM32 / ARM Cortex-M | **Expected with suitable toolchain** | Map HAL or another monotonic tick. |
+| Raspberry Pi RP2040 / RP2350 | **Expected with suitable toolchain** | Map the Pico SDK monotonic clock. |
 | Embedded RISC-V | **Expected with suitable toolchain** | Provide a monotonic millisecond clock. |
 | Classic AVR Uno/Nano/Mega toolchains | **Not advertised as supported** | Typical classic toolchains do not provide the required C++20 coroutine environment. |
 
-`Expected` does not mean hardware-tested.
+`Expected` does not mean compile-tested or hardware-tested.
 
 ## Installation
 
-### Arduino / Arduino-ESP32
+### Arduino-compatible environments
 
 TinyAwait is a normal source library; no precompiled firmware or architecture-specific binary is required.
 
@@ -312,7 +303,7 @@ Copy `src/TinyAwait.h` into your include path and enable C++20:
 target_compile_features(your_target PRIVATE cxx_std_20)
 ```
 
-Define `TINYAWAIT_NOW_MS()` before including the header unless the Arduino environment provides `millis()`.
+Define `TINYAWAIT_NOW_MS()` before including the header unless the environment already supplies Arduino `millis()` integration.
 
 ## Memory model
 
@@ -389,7 +380,7 @@ The automated suite covers:
 - `-fno-rtti`
 - AddressSanitizer
 - UndefinedBehaviorSanitizer
-- Arduino-ESP32 3.3.11 compilation for all examples
+- compilation of all four Arduino-style examples using a real C++20-capable Arduino toolchain target
 
 Local host build:
 
@@ -426,9 +417,9 @@ MIT. See [LICENSE](LICENSE).
 
 ## References
 
+- Arduino library specification: https://docs.arduino.cc/arduino-cli/library-specification
 - Espressif ESP-IDF C++ support: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/cplusplus.html
 - Espressif timer API: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/esp_timer.html
-- Arduino library specification: https://docs.arduino.cc/arduino-cli/library-specification
 - PlatformIO library manifest: https://docs.platformio.org/en/latest/manifests/library-json/index.html
 - Raspberry Pi Pico SDK time APIs: https://www.raspberrypi.com/documentation/pico-sdk/hardware.html
 
