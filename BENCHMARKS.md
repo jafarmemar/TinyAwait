@@ -1,6 +1,6 @@
 # TinyAwait Benchmarks
 
-All numbers here were measured while assembling the v1.1 candidate on 2026-08-10. They are host regression measurements, not universal MCU claims.
+All numbers here were measured for TinyAwait v1.1.0 on 2026-08-10. They are host regression measurements, not universal MCU claims.
 
 ## Environment
 
