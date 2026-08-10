@@ -3,10 +3,15 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   host:
     strategy:
+      fail-fast: false
       matrix:
         compiler: [gcc, clang]
     runs-on: ubuntu-latest
@@ -14,7 +19,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Select compiler
         run: |
-          if [ "${{ matrix.compiler }}" = gcc ]; then echo "CXX=g++" >> "$GITHUB_ENV"; else echo "CXX=clang++" >> "$GITHUB_ENV"; fi
+          if [ "${{ matrix.compiler }}" = gcc ]; then
+            echo "CXX=g++" >> "$GITHUB_ENV"
+          else
+            echo "CXX=clang++" >> "$GITHUB_ENV"
+          fi
       - name: Configure
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -50,13 +59,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: arduino/setup-arduino-cli@v2
+      - name: Show Arduino CLI version
+        run: arduino-cli version
       - name: Install current stable Arduino-ESP32 core
         run: |
           arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-      - name: Compile BlinkForever
-        run: arduino-cli compile --fqbn esp32:esp32:esp32 --libraries . examples/BlinkForever
-      - name: Compile OnFor500ms
-        run: arduino-cli compile --fqbn esp32:esp32:esp32 --libraries . examples/OnFor500ms
-      - name: Compile NestedAwait
-        run: arduino-cli compile --fqbn esp32:esp32:esp32 --libraries . examples/NestedAwait
+      - name: Compile Arduino-ESP32 examples
+        run: |
+          for example in BlinkForever OnFor500ms NestedAwait; do
+            arduino-cli compile \
+              --fqbn esp32:esp32:esp32 \
+              --library "$GITHUB_WORKSPACE" \
+              "examples/${example}"
+          done
