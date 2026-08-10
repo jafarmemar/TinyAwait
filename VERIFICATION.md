@@ -120,14 +120,14 @@ Result: passed with GCC, Clang, ASan, and UBSan host runs.
 
 GitHub Actions installs **Arduino-ESP32 3.3.11** and uses it as one real C++20-capable Arduino compile target for the supplied sketches.
 
-Examples compile-verified in CI:
+The current workflow compiles these four examples on every push:
 
 - `examples/SingleDelay`
 - `examples/RepeatingDelay`
 - `examples/SequentialDelays`
 - `examples/NestedDelay`
 
-Result: **passed** for the verified CI run before the example rename. The current workflow compiles the renamed four-example set on every push; the repository CI badge is the source of truth for the latest commit.
+The repository CI badge and Actions page show the result for the latest commit.
 
 This is compile verification, not physical hardware testing. Arduino-ESP32 is used here as a CI target; it is not the only intended platform for TinyAwait.
 
