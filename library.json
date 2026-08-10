@@ -1,0 +1,31 @@
+{
+  "name": "TinyAwait",
+  "version": "1.1.0",
+  "description": "Tiny, heap-free C++20 co_await delays and child coroutines for microcontrollers and embedded systems.",
+  "keywords": [
+    "c++20",
+    "coroutines",
+    "co-await",
+    "embedded",
+    "microcontroller",
+    "non-blocking",
+    "async",
+    "timers",
+    "esp32",
+    "arduino",
+    "heap-free",
+    "fixed-memory"
+  ],
+  "homepage": "https://github.com/jafarmemar/TinyAwait",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jafarmemar/TinyAwait.git"
+  },
+  "authors": {
+    "name": "jafarmemar",
+    "url": "https://github.com/jafarmemar",
+    "maintainer": true
+  },
+  "license": "MIT",
+  "headers": "TinyAwait.h"
+}
