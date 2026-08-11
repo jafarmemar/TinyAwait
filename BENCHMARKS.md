@@ -1,160 +1,161 @@
-# TinyAwait Benchmarks — 1.0.x
+# TinyAwait Benchmarks — 1.1.0
 
-The runtime measurements below are the original TinyAwait 1.0.0 host baseline. They are retained unchanged for reproducibility and are **not MCU timing guarantees**. Version 1.0.1 is a correctness patch for an exact wrap-during-resume/re-arm edge case; its version-specific impact is documented separately below rather than relabeling old measurements as new ones.
+These measurements are engineering regression data from an x86_64 Linux host. They are useful for comparing implementations under the same conditions, but they are not MCU timing guarantees.
 
-## Environment and methodology
+## What changed in 1.1.0
 
-- Host: x86_64 Linux
-- GCC: 14.2.0
-- Clang used for correctness cross-checking: 17.0.0
-- Runtime benchmarks: GCC `-O2 -fno-exceptions -fno-rtti`
-- Size proxy: GCC `-Os -flto -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -Wl,--gc-sections`
-- Default `TINYAWAIT_MAX_TASKS`: 32
-- Default `TINYAWAIT_FRAME_SIZE`: 128
-- Multiple complete runs were collected; medians are reported.
+TinyAwait 1.0.x used equal-size coroutine-frame slots. At the default configuration, every live coroutine occupied one 128-byte slot whether its compiler-generated frame was small or large.
 
-## 1.0.0 scheduler baseline
+TinyAwait 1.1.0 keeps a fixed total frame-memory budget but stores variable-size frames inside one static arena. This removes the hard per-frame slot ceiling without introducing the heap.
 
-At the default capacity of 32, representative GCC 14.2 medians are:
+The timer scheduler itself is unchanged. The nearest-deadline `poll()` fast path and wrap-safe timing logic remain the same as 1.0.1.
+
+## Historical scheduler baseline
+
+The following values are the published 1.0.0 GCC 14.2 medians at capacity 32:
 
 | Case | Median |
 |---|---:|
-| `poll()` with 0 active timers | **0.575 ns/call** |
-| `poll()` with 32 waiting timers, same tick | **1.127 ns/call** |
-| `poll()` with 32 waiting timers, advancing clock | **1.505 ns/call** |
-| frame alloc/free near 32-frame capacity | **0.918 ns/op** |
-| expire 32 timers at the same deadline | **97.749 ns/call** |
+| `poll()` with 0 active timers | 0.575 ns/call |
+| `poll()` with 32 waiting timers, same tick | 1.127 ns/call |
+| `poll()` with 32 waiting timers, advancing clock | 1.505 ns/call |
+| frame alloc/free near 32-frame capacity | 0.918 ns/op |
+| expire 32 timers at the same deadline | 97.749 ns/call |
 
-The nearest-deadline fast path keeps repeated `poll()` calls O(1) while all timers are still in the future. Once at least one timer is due, the fixed timer table is scanned and all due timers are resumed.
+Those numbers are retained as historical scheduler data. They should not be presented as fresh 1.1.0 measurements.
 
-The frame allocator uses an intrusive fixed-capacity free-list, so frame allocation and reuse are O(1). Free-list links live inside frame storage that is already free; there is no heap fallback or dynamic container.
+## Frame allocator comparison
 
-## 1.0.1 wrap-fix impact
+The 1.1.0 allocator was compared with the fixed-slot allocator on the same host using GCC 14.2 and `-O2 -fno-exceptions -fno-rtti`.
 
-Version 1.0.1 adds a rare-path check after a resumed coroutine returns control to the due scan. If that coroutine registered another delay after the 32-bit millisecond clock wrapped, the scan restarts from the updated clock state instead of continuing with a stale pre-wrap `now` value.
+Representative results from that comparison:
 
-Same-environment local comparison of the fix showed:
+| Case | 1.0.x fixed slots | 1.1.0 variable arena |
+|---|---:|---:|
+| isolated 56 B alloc/free | ~2.34 ns | ~4.6 ns |
+| mixed 32-frame LIFO batch | baseline | about 8% slower |
+| full coroutine create/suspend/resume/destroy cycle | ~20.29 ns | ~20.30 ns |
 
-- no meaningful regression in the common future-deadline `poll()` fast path;
-- approximately **+42 B `.text`** in the size-oriented host proxy;
-- **no `.bss` increase**;
-- a small due/expire-path cost from one predictable epoch check per resumed timer;
-- the recovery/restart branch is only taken when the clock epoch actually changes during that due scan.
+The isolated allocator operation is slower because 1.1.0 tracks variable spans instead of popping one equal-size slot. In the measured end-to-end coroutine lifecycle, that difference was lost in normal runtime work and remained within host measurement noise.
 
-GitHub CI for the fix passed GCC and Clang host tests, ASan/UBSan, the size-oriented build, and all Arduino-ESP32 example compilations. Absolute linker totals from a different runner/toolchain image should not be compared directly with the historical 1.0.0 numbers below.
+Do not treat sub-nanosecond differences as portable performance claims. The useful result is the shape of the trade-off: variable frame sizing adds allocator work, while the normal coroutine lifecycle and scheduler hot path remain close to the previous implementation.
 
-## Capacity scaling
+## Allocation paths
 
-`benchmarks/benchmark_matrix.cpp` supports measurements at capacities:
+The arena is designed around common embedded lifetimes:
 
-```text
-1, 4, 8, 16, 32, 64, 128, 256, 1000
+- **Fresh allocation:** extend the bump frontier. O(1).
+- **LIFO release:** retreat the bump frontier. O(1).
+- **Hole reuse:** search the sorted free-span list for a large enough span.
+- **Adjacent free spans:** coalesce when released.
+- **Free tail:** reclaimed lazily when a later allocation needs more contiguous space.
+
+A fragmented free list can make hole reuse O(number of free spans). This is an intentional difference from the old equal-slot free-list, whose allocation/release operations were strictly O(1).
+
+`TINYAWAIT_MAX_TASKS` still bounds the number of live frames, so the amount of allocator bookkeeping work is bounded by a compile-time configuration.
+
+## RAM model
+
+Default compatibility settings remain:
+
+```cpp
+#define TINYAWAIT_MAX_TASKS 32
+#define TINYAWAIT_FRAME_SIZE 128
 ```
 
-Small configurations such as 8, 16, and 32 are the primary design target. Higher capacities are included to make scaling limitations visible.
+Without an explicit pool budget, they produce about 4 KiB of coroutine-frame storage, adjusted to the target's maximum fundamental alignment.
 
-The fixed-table design remains intentionally simple: when a deadline is actually due, work scales with configured capacity because the timer array is scanned. TinyAwait does not introduce a timing wheel, heap scheduler, executor, or dynamic timer structure.
+New projects can set the budget directly:
 
-## Frame allocation / release scaling
-
-Representative 1.0.0 allocation+release medians near pool capacity:
-
-| Capacity | ns per pair |
-|---:|---:|
-| 1 | 0.875 |
-| 4 | 0.841 |
-| 8 | 0.953 |
-| 16 | 0.831 |
-| 32 | 0.918 |
-| 64 | 0.843 |
-| 128 | 0.849 |
-| 256 | 0.814 |
-| 1000 | 0.825 |
-
-These results show the intended O(1) allocator behavior across the measured capacities.
-
-## RAM / static state
-
-The free-list uses released frame bytes themselves for links. Production state does not require a separate per-frame occupancy array. A small bump index identifies never-used slots, so initialization is also O(1).
-
-For a representative 32-bit MCU with 4-byte coroutine handles, 4-byte pointers, 12-byte `TimerSlot`, and 128-byte frame slots, the raw state estimate is:
-
-| Capacity | Estimated static state |
-|---:|---:|
-| 1 | 159 B |
-| 4 | 579 B |
-| 8 | 1139 B |
-| 16 | 2259 B |
-| 32 | **4499 B** |
-| 64 | 8979 B |
-| 128 | 17939 B |
-| 256 | 35860 B |
-| 1000 | 140020 B |
-
-These are structure-level estimates, not linker totals. Target ABI/alignment can change exact `.bss`/`.data` placement.
-
-On the x86_64 size probe at capacity 32, `TimerSlot` is 16 B and `FrameSlot` is 128 B.
-
-## Flash / linked-size proxy
-
-The historical 1.0.0 capacity-32 result with the documented size-oriented flags was:
-
-```text
-.text: 2727 B
-.data:  553 B
-.bss:  4696 B
+```cpp
+#define TINYAWAIT_MAX_TASKS 16
+#define TINYAWAIT_FRAME_POOL_BYTES 2048
 ```
 
-The 1.0.1 local same-environment comparison added approximately 42 B of `.text` and did not increase `.bss`. Actual Flash/RAM usage must be measured with the target toolchain when exact embedded numbers matter.
+The important difference is how that memory is used.
 
-## Coroutine frame size
+With fixed 128-byte slots, a compiler frame larger than 128 bytes required increasing every slot. With the variable arena, a larger frame consumes its aligned size from the shared budget while smaller frames keep their smaller allocations.
 
-Host instrumentation has measured the covered coroutine frames well below the default 128-byte slot. Frame size remains compiler-, ABI-, optimization-, parameter-, and local-variable-dependent.
+Host validation included coroutine frames in the roughly 360–376 byte range running from the default-size arena without increasing every task slot.
 
-Applications with larger coroutine frames must increase `TINYAWAIT_FRAME_SIZE`.
+## Fragmentation
 
-## Heap test
+The arena never compacts live frames because coroutine frame addresses must remain stable. That means external fragmentation is possible.
 
-`test_no_heap` performs 10,000 parent/child create/suspend/resume/complete sequences while global `operator new` is instrumented.
+For example, several small free spans may add up to 500 bytes while no single span is large enough for a 300-byte frame. In that situation allocation fails even though the total free-byte count looks sufficient.
 
-Result: **0 additional global heap allocations in the TinyAwait path.**
+The allocator reduces this risk by keeping free spans address-sorted, merging adjacent spans, and reclaiming the free tail. Workloads that keep many mixed-size frames alive for long periods should still leave headroom and test their real lifecycle pattern.
 
-## Correctness and stress coverage
+## Linked-size proxy
 
-The verification suite includes:
+Using the same style of host size-oriented build (`-Os -flto -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -Wl,--gc-sections`), the variable-arena implementation adds roughly **0.55 KiB of `.text`** over the 1.0.x fixed-slot implementation. Static data remains essentially unchanged at the default budget, because one fixed frame-storage region is still reserved at build time.
 
-- full `uint32_t` maximum delay
-- ordinary 32-bit clock wraparound
-- wrap occurring during `poll()` while a resumed coroutine re-arms another delay
-- nearest-deadline recomputation and earlier insertion
-- same-deadline timers
-- sparse polling across very large elapsed intervals
-- deterministic full-range timer reference rounds
-- frame-pool exhaustion and complete reuse
-- free-list corruption/cycle checks
-- 300,000-operation deterministic allocator stress
-- 800,000 scheduled suspension/resumption cycles in the lifecycle stress test
+This is a host linker regression signal. Exact Flash and RAM use should be measured with the target MCU toolchain.
 
-## Reproducing capacity measurements
+## No-heap verification
+
+TinyAwait still overrides coroutine frame allocation inside `Async::promise_type`. The frame arena is static and there is no fallback to global `new` or `malloc`.
+
+The no-heap regression test instruments global allocation while repeatedly running nested TinyAwait coroutine sequences. The TinyAwait execution path records no additional global heap allocations.
+
+## Stress and correctness coverage
+
+Allocator-focused verification covers:
+
+- variable requests from very small frames through frames larger than the old 128-byte slot;
+- alignment and arena-bound checks;
+- overlap checks for simultaneously live frames;
+- one million deterministic variable-size allocation/free operations;
+- non-LIFO release order;
+- split-span reuse and adjacent-span coalescing;
+- full-arena recovery after fragmented activity;
+- live-frame count exhaustion;
+- explicit pool budgets;
+- legacy small `TINYAWAIT_FRAME_SIZE` configurations;
+- large parent/child and detached coroutine lifetimes;
+- ASan/UBSan coverage.
+
+Scheduler verification continues to cover ordinary and wrap-during-resume clock wraparound, maximum delay, sparse polling, same-deadline timers, chained scheduling, randomized schedules, and nearest-deadline recomputation.
+
+## Reproducing the benchmark matrix
+
+Build the repository benchmarks:
 
 ```bash
-for n in 1 4 8 16 32 64 128 256 1000; do
-  g++ -std=c++20 -O2 -Isrc \
-    -DTINYAWAIT_MAX_TASKS=$n \
-    -fno-exceptions -fno-rtti \
-    benchmarks/benchmark_matrix.cpp -o "bench-$n"
-
-  ./"bench-$n" poll_wait_same
-  ./"bench-$n" poll_wait_adv
-  ./"bench-$n" expire_same
-  ./"bench-$n" alloc_near
-done
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
 ```
 
-Collect multiple complete runs and report a median.
+The matrix benchmark supports these modes:
 
-## Scaling limit
+```text
+poll0
+poll_wait_same
+poll_wait_adv
+expire_same
+alloc_one
+alloc_near
+alloc_mixed
+lifecycle
+```
 
-The scheduler still scans the fixed timer table when at least one deadline is due. That is deliberate: for small embedded timer populations it keeps the architecture compact, deterministic, heap-free, and easy to audit. The fast path removes the scan from the common "nothing due yet" case.
+It can also be compiled directly with a different task limit:
 
-For very large populations with frequent expirations, a different scheduler data structure may eventually be justified. That remains outside the TinyAwait 1.0.1 design target.
+```bash
+g++ -std=c++20 -O2 -Isrc \
+  -DTINYAWAIT_MAX_TASKS=32 \
+  -fno-exceptions -fno-rtti \
+  benchmarks/benchmark_matrix.cpp -o bench
+
+./bench poll_wait_same
+./bench alloc_mixed
+./bench lifecycle
+```
+
+Collect several complete runs and compare medians or another stable representative statistic. Keep compiler, flags, host load, and configuration identical when comparing implementations.
+
+## Scheduler scaling limit
+
+When no timer is due, the nearest-deadline fast path avoids scanning the timer table. When a deadline is due, the fixed timer table is still scanned so all due coroutines can resume.
+
+That design remains deliberate for the intended small embedded timer populations. A timing wheel, priority heap, executor, or general scheduler would add machinery that TinyAwait does not currently need.
