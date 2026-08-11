@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.1 - 2026-08-11
+
+- Fixed a rare 32-bit clock-wrap bug when a coroutine resumed inside `poll()` crossed the wrap boundary and immediately registered another delay.
+- Prevented the due-timer scan from combining a pre-wrap `now` value with a post-wrap clock epoch; the scan now restarts from the updated clock state only when that rare epoch transition occurs.
+- Added a permanent regression case to `test_next_deadline` covering wrap-during-resume/re-arm behavior with another timer spanning the same wrap.
+- Verified the fix with GCC 14.2 and Clang 17 at `-O0`, `-O2`, and `-Os`, plus ASan/UBSan and extended wrap stress.
+- GitHub CI passed host GCC/Clang tests, sanitizers, the size-oriented build, and all Arduino-ESP32 examples before release preparation.
+- Public API and configuration remain unchanged from 1.0.0.
+
 ## 1.0.0 - 2026-08-10
 
 - Initial public release of TinyAwait.
