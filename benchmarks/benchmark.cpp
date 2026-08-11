@@ -15,15 +15,18 @@ static double bench_poll(std::size_t iterations) {
     const auto begin = std::chrono::steady_clock::now();
     for (std::size_t i = 0; i < iterations; ++i) tinyawait::poll();
     const auto end = std::chrono::steady_clock::now();
-    return std::chrono::duration<double, std::nano>(end - begin).count() / static_cast<double>(iterations);
+    return std::chrono::duration<double, std::nano>(end - begin).count() /
+        static_cast<double>(iterations);
 }
 
 int main() {
     constexpr std::size_t iterations = 5000000;
+
     const auto zero = bench_poll(iterations);
     sleeper();
     const auto sample_frame = tinyawait::last_frame_size();
     const auto one = bench_poll(iterations);
+
     for (int i = 1; i < 32; ++i) sleeper();
     const auto thirty_two = bench_poll(iterations);
 
@@ -31,7 +34,8 @@ int main() {
     fake_now = 1000;
     tinyawait::poll();
     const auto stop = std::chrono::steady_clock::now();
-    const auto resume = std::chrono::duration<double, std::nano>(stop - start).count() / 32.0;
+    const auto resume =
+        std::chrono::duration<double, std::nano>(stop - start).count() / 32.0;
 
     fake_now = 2000;
     parent();
@@ -46,6 +50,7 @@ int main() {
     std::printf("sample_coroutine_frame_bytes=%zu\n", sample_frame);
     std::printf("max_frame_bytes_after_nested=%zu\n", nested_parent_frame);
     std::printf("timer_slot_bytes=%zu\n", sizeof(tinyawait::detail::TimerSlot));
-    std::printf("frame_slot_bytes=%zu\n", sizeof(tinyawait::detail::FrameSlot));
+    std::printf("frame_pool_bytes=%zu\n", tinyawait::frame_pool_bytes);
+    std::printf("frame_alignment_bytes=%zu\n", tinyawait::detail::frame_alignment);
     return 0;
 }
