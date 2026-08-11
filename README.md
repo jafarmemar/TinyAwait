@@ -97,7 +97,7 @@ The board/toolchain still needs C++20 coroutine support.
 |---|---|---|
 | [SingleDelay](examples/SingleDelay/SingleDelay.ino) | `singleDelay()` | One non-blocking delay, then continue. |
 | [RepeatingDelay](examples/RepeatingDelay/RepeatingDelay.ino) | `repeatingDelay()` | Repeated timed work without blocking the main loop. |
-| [SequentialDelays](examples/SequentialDelays/SequentialDelays.ino) | `sequentialDelay()` | Several delays written as a simple top-to-bottom sequence. |
+| [SequentialDelays](examples/SequentialDelays/SequentialDelays.ino) | `sequentialDelays()` | Several delays written as a simple top-to-bottom sequence. |
 | [NestedDelay](examples/NestedDelay/NestedDelay.ino) | `childDelay()` / `nestedDelay()` | Await a child coroutine, then continue in the parent. |
 
 The sketches use GPIO only to make timing visible. TinyAwait itself is not tied to Arduino or ESP32.
@@ -210,7 +210,7 @@ The production error hook should **not return**.
 ```cpp
 #include "stm32xxxx_hal.h"
 #define TINYAWAIT_NOW_MS() HAL_GetTick()
-#include "TinyAwait.h"
+#include <TinyAwait.h>
 ```
 
 ### Raspberry Pi Pico SDK
@@ -221,7 +221,7 @@ The production error hook should **not return**.
 
 #define TINYAWAIT_NOW_MS() \
     static_cast<std::uint32_t>(time_us_64() / 1000ULL)
-#include "TinyAwait.h"
+#include <TinyAwait.h>
 ```
 
 Any other target can provide its own monotonic `uint32_t` millisecond source.
