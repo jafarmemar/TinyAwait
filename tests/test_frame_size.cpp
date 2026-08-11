@@ -6,8 +6,6 @@ static int errors = 0;
 
 #define TINYAWAIT_TESTING
 #define TINYAWAIT_MAX_TASKS 8
-// Legacy setting kept deliberately: it now contributes to the total pool
-// budget (8 * 64 = 512 B) rather than imposing a 64 B per-frame ceiling.
 #define TINYAWAIT_FRAME_SIZE 64
 #define TINYAWAIT_NOW_MS() fake_now
 #define TINYAWAIT_ON_ERROR() (++errors)
@@ -30,7 +28,7 @@ Async larger_than_entire_pool() {
 }
 
 int main() {
-    static_assert(tinyawait::frame_pool_bytes <= 512U);
+    static_assert(tinyawait::frame_pool_bytes == 512U);
 
     larger_than_legacy_slot();
     assert(errors == 0);
