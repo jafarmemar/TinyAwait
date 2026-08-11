@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0 - 2026-08-11
+
+- Replaced the fixed per-coroutine frame slots with one fixed-memory arena that stores variable-size coroutine frames.
+- Added `TINYAWAIT_FRAME_POOL_BYTES` for an explicit total frame-memory budget.
+- Kept `TINYAWAIT_FRAME_SIZE` as a backward-compatible configuration input; it no longer acts as a hard size limit for each individual coroutine.
+- Kept `TINYAWAIT_MAX_TASKS` as the maximum number of simultaneously live coroutine frames.
+- Added reuse of released spans, adjacent-span coalescing, and lazy reclaim of free space at the arena tail without adding a heap fallback.
+- Added large-frame parent/child and detached-task coverage, small legacy-configuration coverage, and expanded allocator stress tests.
+- Expanded CI with allocator-focused GCC and Clang checks at `-O0`, `-O2`, and `-Os` in addition to the full host suites, sanitizers, size build, and Arduino-ESP32 example builds.
+- Updated memory, performance, failure-mode, and configuration documentation for the new arena model.
+- Preserved the existing `Async`, `co_await`, `tinyawait::poll()`, timing, and clock-wrap behavior.
+
 ## 1.0.1 - 2026-08-11
 
 - Fixed a rare 32-bit clock-wrap bug when a coroutine resumed inside `poll()` crossed the wrap boundary and immediately registered another delay.
