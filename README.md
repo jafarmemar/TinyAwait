@@ -18,12 +18,12 @@ The delay is in milliseconds. Only the current coroutine pauses; the main loop a
 
 TinyAwait is header-only, uses fixed total memory, does not fall back to the heap, and does not create threads or RTOS tasks.
 
-> **Current version: 1.1.0.**
+> **Current version: 1.1.1.**
 
 ## Highlights
 
 - `co_await 500;` for readable non-blocking delays
-- `co_await child();` for simple parent/child sequencing
+- `co_await child();` for parent/child sequencing
 - C++20, header-only
 - fixed total coroutine-frame memory
 - variable-size coroutine frames inside that fixed budget
@@ -93,36 +93,68 @@ Async parentDelay() {
 }
 ```
 
-The parent stays suspended until the child finishes. The child's frame is then released before the parent continues.
+The parent stays suspended until the child finishes. The child's frame is released before the parent continues.
 
-Calling an `Async` function without `co_await` intentionally starts it as a detached task:
+Calling an `Async` function without `co_await` starts it as a detached task:
 
 ```cpp
 childDelay();
 ```
 
-That is useful when the caller should continue immediately.
+Use that when the caller should continue immediately.
 
-## Main API
+## API
 
 ```cpp
 Async someTask();
 tinyawait::poll();
 tinyawait::max_delay_ms;
-tinyawait::frame_pool_bytes;
 ```
 
 Inside an `Async` function:
 
 ```cpp
 co_await 0;
-co_await 1;
 co_await 500;
-co_await 1000;
 co_await child();
 ```
 
-Delay operands must be integral and in the range `0..4,294,967,295`. Invalid values use `TINYAWAIT_ON_ERROR()` instead of wrapping silently.
+Delay values must be integral and in the range `0..4,294,967,295`. Invalid values use `TINYAWAIT_ON_ERROR()` instead of wrapping silently.
+
+## Memory and capacity
+
+No memory configuration is required for normal use.
+
+By default TinyAwait allows 32 live coroutine frames and reserves roughly 4 KiB for their combined frame storage. If you lower `TINYAWAIT_MAX_TASKS`, the default frame budget scales down with it.
+
+For a smaller target:
+
+```cpp
+#define TINYAWAIT_MAX_TASKS 8
+#include <TinyAwait.h>
+```
+
+For an explicit memory budget:
+
+```cpp
+#define TINYAWAIT_MAX_TASKS 16
+#define TINYAWAIT_FRAME_POOL_BYTES 2048
+#include <TinyAwait.h>
+```
+
+`TINYAWAIT_MAX_TASKS` limits the number of live coroutine frames. `TINYAWAIT_FRAME_POOL_BYTES` limits their combined memory.
+
+Each coroutine uses the size requested by the compiler. A larger coroutine can therefore share the same pool with smaller ones without forcing every task to reserve the same amount of RAM.
+
+`tinyawait::frame_pool_bytes` exposes the usable aligned pool size at compile time.
+
+The arena never grows and never falls back to `malloc` or the global heap.
+
+### Fragmentation
+
+Variable-size allocation can leave free gaps when tasks finish in a different order from the one in which they were created. TinyAwait keeps free spans sorted, merges adjacent spans, and reclaims free space at the end of the arena.
+
+A new frame still needs one contiguous span large enough to hold it. Applications with many long-lived mixed-size tasks should leave reasonable headroom and test their real task pattern.
 
 ## Maximum delay
 
@@ -136,39 +168,6 @@ co_await tinyawait::max_delay_ms;
 ```
 
 The scheduler preserves the full 32-bit range across clock wraparound. While timers are active, `poll()` must run often enough that a complete 32-bit millisecond clock cycle does not pass between clock observations.
-
-## Memory and capacity
-
-TinyAwait 1.1.0 uses one fixed memory arena for coroutine frames. Each coroutine receives the amount of space requested by the compiler instead of occupying an equally sized slot.
-
-The default configuration is:
-
-```cpp
-#define TINYAWAIT_MAX_TASKS 32
-#define TINYAWAIT_FRAME_SIZE 128
-```
-
-For compatibility with earlier releases, those defaults produce roughly a 4 KiB frame arena. `TINYAWAIT_FRAME_SIZE` is kept as a legacy configuration input; **it is no longer a per-coroutine size limit**.
-
-For new projects, the clearest configuration is an explicit total frame-memory budget:
-
-```cpp
-#define TINYAWAIT_MAX_TASKS 16
-#define TINYAWAIT_FRAME_POOL_BYTES 2048
-#include <TinyAwait.h>
-```
-
-`TINYAWAIT_MAX_TASKS` limits the number of live coroutine frames. `TINYAWAIT_FRAME_POOL_BYTES` limits their combined memory. `tinyawait::frame_pool_bytes` exposes the usable aligned pool size at compile time.
-
-A larger coroutine can therefore coexist with smaller ones without forcing every task to reserve the same large slot. For example, a 300-byte frame can use about 300 bytes of the pool while simple tasks continue to use much less.
-
-The arena never grows and never falls back to `malloc` or the global heap.
-
-### Fragmentation
-
-Variable-size allocation can leave free gaps when tasks finish in a different order from the one in which they were created. TinyAwait keeps free spans sorted, merges adjacent spans, and reclaims free space at the end of the arena. Even so, a new frame still needs one contiguous span large enough to hold it. In a heavily fragmented workload, allocation can fail even when the sum of all free bytes is larger than the requested frame.
-
-For most small embedded workloads with short-lived or naturally nested tasks, the common bump and LIFO paths remain simple and fast. Applications with unusual long-lived mixed-size workloads should leave reasonable headroom in the frame pool and test their real task pattern.
 
 ## Failure handling
 
@@ -246,18 +245,18 @@ For larger projects, put the configuration and `#include <TinyAwait.h>` in one p
 
 ## Performance
 
-The timer scheduler in 1.1.0 keeps the nearest-deadline fast path from 1.0.x. Repeated `poll()` calls still return in O(1) while every active timer is in the future.
+The timer scheduler keeps the nearest-deadline fast path from 1.0.x. Repeated `poll()` calls return in O(1) while every active timer is in the future.
 
-The new frame allocator favors the common embedded lifecycle:
+The frame allocator favors common embedded lifetimes:
 
-- new frames normally extend a compact bump frontier;
+- fresh frames normally extend a compact bump frontier;
 - LIFO releases normally retreat that frontier directly;
 - released holes are reused and adjacent holes are merged;
 - searching free holes is only needed after non-LIFO releases.
 
-A same-host regression comparison found no meaningful change in end-to-end create/suspend/resume/destroy time. Isolated allocator microbenchmarks are somewhat slower than the old equal-slot free-list, which is the expected cost of supporting variable frame sizes. The size-oriented host proxy also adds roughly 0.55 KiB of code. These measurements are regression signals, not MCU timing guarantees.
+A same-host regression comparison found no meaningful change in end-to-end create/suspend/resume/destroy time compared with the fixed-slot allocator. Isolated allocator operations are somewhat slower because variable-size spans require more bookkeeping.
 
-Full methodology and the historical scheduler baseline are in [BENCHMARKS.md](BENCHMARKS.md).
+See [BENCHMARKS.md](BENCHMARKS.md) for methodology and trade-offs.
 
 ## Installation
 
@@ -293,9 +292,13 @@ TinyAwait deliberately stays smaller than a general async framework:
 - variable-size frame storage can fragment under non-LIFO lifetimes;
 - over-aligned coroutine locals remain toolchain-dependent and should be verified on the target compiler.
 
+## Migrating old configuration
+
+`TINYAWAIT_FRAME_SIZE` is deprecated and is no longer part of the documented configuration API. Existing projects that define it continue to compile for compatibility, but new code should use `TINYAWAIT_FRAME_POOL_BYTES` when an explicit frame-memory budget is needed.
+
 ## Tests
 
-The host suite contains 16 tests covering ordinary and nested delays, detached tasks, capacity and frame-arena exhaustion, variable-size frames, legacy small-memory configuration, no-heap behavior, randomized allocator reuse, timer stress, full-range delay handling, 32-bit clock wraparound, nearest-deadline behavior, and shared state across multiple translation units.
+The host suite contains 16 tests covering ordinary and nested delays, detached tasks, capacity and frame-arena exhaustion, variable-size frames, legacy configuration compatibility, no-heap behavior, randomized allocator reuse, timer stress, full-range delay handling, 32-bit clock wraparound, nearest-deadline behavior, and shared state across multiple translation units.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
