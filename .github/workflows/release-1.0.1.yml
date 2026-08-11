@@ -1,0 +1,54 @@
+name: Publish TinyAwait 1.0.1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-1.0.1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish v1.0.1 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v1.0.1"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$tag already exists; nothing to do."
+            exit 0
+          fi
+
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          ## TinyAwait 1.0.1
+
+          Patch release fixing a rare 32-bit millisecond clock-wrap correctness issue.
+
+          ### Fixed
+          - Prevented `poll()` from continuing a due-timer scan with a pre-wrap `now` value after a resumed coroutine observes the wrap and immediately registers another delay.
+          - The due scan now restarts from the updated clock state only when the epoch actually changes during resume/re-arm.
+          - Added permanent regression coverage for another timer spanning the same wrap so premature firing cannot silently return.
+
+          ### Verification
+          - GCC and Clang host suites passed.
+          - ASan/UBSan passed.
+          - Size-oriented build passed.
+          - Arduino-ESP32 examples compile-verified.
+          - Extended local wrap-during-`poll()` stress passed.
+
+          ### Compatibility
+          - No public API changes.
+          - No configuration changes.
+          - Existing TinyAwait 1.0.0 users can update directly to 1.0.1.
+          EOF
+
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "TinyAwait 1.0.1" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
