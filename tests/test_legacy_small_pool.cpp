@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 
 static std::uint32_t fake_now = 0;
