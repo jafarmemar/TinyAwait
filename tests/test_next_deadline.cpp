@@ -44,6 +44,23 @@ static std::uint32_t next_random() noexcept {
     return rng_state;
 }
 
+static int wrap_rearm_state = 0;
+static bool wrap_later_fired = false;
+
+Async rearm_during_poll_wrap() {
+    wrap_rearm_state = 1;
+    co_await 1;
+    wrap_rearm_state = 2;
+    fake_now = 0;
+    co_await 10;
+    wrap_rearm_state = 3;
+}
+
+Async wait_across_poll_wrap() {
+    co_await 100;
+    wrap_later_fired = true;
+}
+
 int main() {
     // Empty poll remains a zero-clock-read fast path.
     const auto reads_before_empty = clock_reads;
@@ -136,6 +153,34 @@ int main() {
     fake_now = 9;
     tinyawait::poll();
     assert(wrapped == 1);
+
+    // A coroutine resumed by poll() can cross the 32-bit clock wrap before
+    // registering its next delay. The rest of the same scan must not combine
+    // the pre-wrap `now` value with the new clock epoch.
+    wrap_rearm_state = 0;
+    wrap_later_fired = false;
+    fake_now = std::numeric_limits<std::uint32_t>::max() - 2U;
+    rearm_during_poll_wrap();
+    wait_across_poll_wrap();
+    fake_now = std::numeric_limits<std::uint32_t>::max() - 1U;
+    tinyawait::poll();
+    assert(wrap_rearm_state == 2);
+    assert(!wrap_later_fired);
+    fake_now = 9U;
+    tinyawait::poll();
+    assert(wrap_rearm_state == 2);
+    assert(!wrap_later_fired);
+    fake_now = 10U;
+    tinyawait::poll();
+    assert(wrap_rearm_state == 3);
+    assert(!wrap_later_fired);
+    fake_now = 96U;
+    tinyawait::poll();
+    assert(!wrap_later_fired);
+    fake_now = 97U;
+    tinyawait::poll();
+    assert(wrap_later_fired);
+    assert(tinyawait::active_timers() == 0);
 
     // Full uint32 delay still works while poll() advances the global countdown in chunks.
     int max_fired = 0;

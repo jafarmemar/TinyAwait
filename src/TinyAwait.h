@@ -270,24 +270,42 @@ private:
     handle_type handle_{};
 };
 
+namespace detail {
+
+inline void poll_due(std::uint32_t now) noexcept {
+restart_scan:
+    const auto scan_epoch = clock_epoch;
+    next_deadline_epoch = invalid_deadline_epoch;
+    for (auto& timer : timers) {
+        if (!timer.handle) continue;
+        if (deadline_due(timer.deadline, timer.epoch, now)) {
+            const auto handle = timer.handle;
+            timer.handle = {};
+            --active_timer_count;
+            handle.resume();
+
+            // A resumed coroutine may register another delay. If that clock read
+            // crosses the 32-bit wrap, add_timer() advances clock_epoch while
+            // this scan still holds the pre-wrap `now`. Restart before examining
+            // another timer so old `now` is never paired with a new epoch.
+            if (clock_epoch != scan_epoch) [[unlikely]] {
+                now = clock_last;
+                goto restart_scan;
+            }
+        } else {
+            consider_next_deadline(timer.deadline, timer.epoch);
+        }
+    }
+}
+
+} // namespace detail
+
 inline void poll() noexcept {
     if (detail::active_timer_count == 0) return;
     const auto now = static_cast<std::uint32_t>(TINYAWAIT_NOW_MS());
     detail::update_clock(now);
     if (!detail::deadline_due(detail::next_deadline, detail::next_deadline_epoch, now)) return;
-
-    detail::next_deadline_epoch = detail::invalid_deadline_epoch;
-    for (auto& timer : detail::timers) {
-        if (!timer.handle) continue;
-        if (detail::deadline_due(timer.deadline, timer.epoch, now)) {
-            const auto handle = timer.handle;
-            timer.handle = {};
-            --detail::active_timer_count;
-            handle.resume();
-        } else {
-            detail::consider_next_deadline(timer.deadline, timer.epoch);
-        }
-    }
+    detail::poll_due(now);
 }
 
 #ifdef TINYAWAIT_TESTING
