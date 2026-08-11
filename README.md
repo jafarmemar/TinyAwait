@@ -28,7 +28,7 @@ co_await child();
 
 The core is platform-neutral. Arduino-compatible environments can use `millis()` automatically; other targets provide a monotonic millisecond clock through one macro. There is no heap fallback, no RTOS task per delay, no dynamic timer container, and no external library dependency.
 
-> **Current version: 1.0.0.** Host correctness is verified with GCC 14.2 and Clang 17. Arduino examples are compile-checked in CI using Arduino-ESP32 3.3.11 as one real C++20-capable Arduino target.
+> **Current version: 1.0.1.** Host correctness is verified with GCC 14.2 and Clang 17. Arduino examples are compile-checked in CI using Arduino-ESP32 3.3.11 as one real C++20-capable Arduino target.
 
 ## Highlights
 
@@ -40,7 +40,7 @@ The core is platform-neutral. Arduino-compatible environments can use `millis()`
 - 32 simultaneously-live coroutine frames by default
 - automatic frame/timer slot reuse
 - full `uint32_t` single-delay range
-- wrap-safe 32-bit millisecond timing
+- wrap-safe 32-bit millisecond timing, including re-arm during a wrap inside `poll()`
 - O(1) nearest-deadline `poll()` fast path while no timer is due
 - O(1) coroutine-frame allocation/reuse with an intrusive fixed-capacity free-list
 - no thread, RTOS task, lock, mutex, executor, or dynamic container
@@ -97,7 +97,7 @@ The board/toolchain still needs C++20 coroutine support.
 |---|---|---|
 | [SingleDelay](examples/SingleDelay/SingleDelay.ino) | `singleDelay()` | One non-blocking delay, then continue. |
 | [RepeatingDelay](examples/RepeatingDelay/RepeatingDelay.ino) | `repeatingDelay()` | Repeated timed work without blocking the main loop. |
-| [SequentialDelays](examples/SequentialDelays/SequentialDelays.ino) | `sequentialDelays()` | Several delays written as a simple top-to-bottom sequence. |
+| [SequentialDelays](examples/SequentialDelays/SequentialDelays.ino) | `sequentialDelay()` | Several delays written as a simple top-to-bottom sequence. |
 | [NestedDelay](examples/NestedDelay/NestedDelay.ino) | `childDelay()` / `nestedDelay()` | Await a child coroutine, then continue in the parent. |
 
 The sketches use GPIO only to make timing visible. TinyAwait itself is not tied to Arduino or ESP32.
@@ -255,7 +255,7 @@ The current scheduler includes two small fixed-memory optimizations aimed at emb
 - nearest-deadline fast path: repeated `poll()` calls return in O(1) while all timers are still in the future
 - intrusive frame free-list: frame allocation and reuse are O(1)
 
-At the default capacity of 32 on the documented x86_64 GCC 14.2 benchmark host:
+The following values are the documented **1.0.0 host baseline** at capacity 32 on x86_64/GCC 14.2; they are retained for reproducibility rather than relabeled as 1.0.1 measurements:
 
 | Case | Median |
 |---|---:|
@@ -264,6 +264,8 @@ At the default capacity of 32 on the documented x86_64 GCC 14.2 benchmark host:
 | `poll()` with 32 waiting timers, advancing clock | **1.505 ns/call** |
 | frame alloc/free near capacity | **0.918 ns/op** |
 | expire 32 same-deadline timers | **97.749 ns/call** |
+
+Version 1.0.1 adds a rare-path recovery when a coroutine re-arms across the exact 32-bit clock wrap during a due scan. The common no-deadline-due fast path remains unchanged in structure; see [BENCHMARKS.md](BENCHMARKS.md) and [VERIFICATION.md](VERIFICATION.md) for version-specific notes.
 
 These are host regression measurements, not MCU timing guarantees. Full methodology, capacity scaling data, RAM/Flash accounting, and limitations are in [BENCHMARKS.md](BENCHMARKS.md).
 
@@ -305,7 +307,7 @@ TinyAwait stays small by intentionally not becoming a general async framework:
 
 ## Tests
 
-The 14-test host suite covers basic/sequential delays, 32-bit wraparound, capacity failure, no-heap behavior, stress, frame-size failure, nested awaiting, maximum delay, default capacity, invalid delay values, deterministic randomized schedules, multi-translation-unit state sharing, nearest-deadline behavior, and free-list integrity/reuse.
+The 14-test host suite covers basic/sequential delays, ordinary and wrap-during-rearm 32-bit clock wraparound, capacity failure, no-heap behavior, stress, frame-size failure, nested awaiting, maximum delay, default capacity, invalid delay values, deterministic randomized schedules, multi-translation-unit state sharing, nearest-deadline behavior, and free-list integrity/reuse.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
