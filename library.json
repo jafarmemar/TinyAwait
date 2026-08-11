@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/schema/library.json",
   "name": "TinyAwait",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Tiny, heap-free C++20 co_await delays and child coroutines for microcontrollers and embedded systems.",
   "keywords": [
     "cpp20", "coroutines", "co-await", "async", "async-await", "embedded",

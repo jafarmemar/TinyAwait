@@ -48,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/tinyawait-allocator-tests"
-          for test in test_frame_size test_freelist test_variable_frames test_legacy_small_pool; do
+          for test in test_frame_pool test_freelist test_variable_frames test_legacy_config; do
             "${{ matrix.compiler }}" \
               -std=c++20 "${{ matrix.optimization }}" \
               -Wall -Wextra -Wpedantic -Werror \

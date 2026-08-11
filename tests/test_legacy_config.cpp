@@ -5,6 +5,7 @@
 static std::uint32_t fake_now = 0;
 #define TINYAWAIT_TESTING
 #define TINYAWAIT_MAX_TASKS 1
+// Compatibility-only input from older TinyAwait releases.
 #define TINYAWAIT_FRAME_SIZE 1
 #define TINYAWAIT_NOW_MS() fake_now
 #include "TinyAwait.h"

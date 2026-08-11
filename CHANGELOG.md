@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.1 - 2026-08-11
+
+- Simplified frame-memory configuration around `TINYAWAIT_FRAME_POOL_BYTES`.
+- TinyAwait no longer defines `TINYAWAIT_FRAME_SIZE` for new code.
+- Existing projects that still define `TINYAWAIT_FRAME_SIZE` remain source-compatible through a small compatibility path.
+- The default frame budget still scales with `TINYAWAIT_MAX_TASKS`, so reducing the task limit continues to reduce reserved RAM automatically.
+- Renamed frame-allocation tests around the shared-pool model and kept a dedicated legacy-configuration regression test.
+- Simplified README examples so normal use needs no memory macro.
+- Scheduler, timing, coroutine syntax, allocator behavior, and no-heap guarantees are unchanged from 1.1.0.
+
 ## 1.1.0 - 2026-08-11
 
 - Replaced the fixed per-coroutine frame slots with one fixed-memory arena that stores variable-size coroutine frames.
