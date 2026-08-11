@@ -1,6 +1,6 @@
-# Verification Report — TinyAwait 1.0.0
+# Verification Report — TinyAwait 1.0.1
 
-This report records verification of the initial public TinyAwait 1.0.0 snapshot.
+This report records verification of TinyAwait 1.0.1, including the 32-bit clock-wrap re-arm correctness fix introduced after the initial 1.0.0 release.
 
 ## Configuration under review
 
@@ -13,7 +13,7 @@ This report records verification of the initial public TinyAwait 1.0.0 snapshot.
 - nearest-deadline `poll()` fast path
 - intrusive O(1) coroutine-frame free-list
 
-The public programming model is:
+The public programming model is unchanged:
 
 ```cpp
 Async task() {
@@ -32,20 +32,37 @@ void loop() {
 
 `tinyawait::max_delay_ms` is `UINT32_MAX`.
 
+## 1.0.1 correctness fix
+
+The 1.0.0 scheduler could enter a rare inconsistent clock state if all of the following happened in the same due scan:
+
+1. `poll()` captured a pre-wrap `now` value;
+2. a due coroutine was resumed;
+3. the 32-bit clock wrapped before that coroutine registered its next `co_await` delay;
+4. `add_timer()` observed the wrapped clock and advanced the global epoch;
+5. the outer due scan continued examining other timers using its older pre-wrap `now` together with the newer epoch.
+
+That mismatch could make another timer appear due prematurely.
+
+Version 1.0.1 moves the due scan into `detail::poll_due()` and checks the epoch after each resumed coroutine. If a re-arm changed the clock epoch, the scan restarts from `clock_last` before another timer is examined. The common future-deadline fast path remains unchanged in structure.
+
+A permanent regression case in `test_next_deadline` reproduces the original wrap-during-resume/re-arm sequence and verifies that a second timer spanning the same wrap is not fired early.
+
 ## Host toolchains
 
-Verification environment:
+Verification environment used for the targeted fix and local cross-checks:
 
 - x86_64 Linux
 - GCC 14.2.0
 - Clang 17.0.0
-- CMake 3.31.6
-- GNU binutils/`size` 2.44
+- `-O0`, `-O2`, and `-Os` targeted regression builds
+- release-style suite with warnings-as-errors, no exceptions, and no RTTI
 
 ### GCC
 
 - Release-style full test suite: passed.
 - 14/14 CTest tests: passed.
+- targeted wrap-during-rearm regression at `-O0`, `-O2`, and `-Os`: passed.
 - `-Wall -Wextra -Wpedantic -Werror`: passed.
 - `-fno-exceptions -fno-rtti`: passed.
 
@@ -53,14 +70,27 @@ Verification environment:
 
 - Release-style full test suite: passed.
 - 14/14 CTest tests: passed.
+- targeted wrap-during-rearm regression at `-O0`, `-O2`, and `-Os`: passed.
 - `-Wall -Wextra -Wpedantic -Werror`: passed.
 - `-fno-exceptions -fno-rtti`: passed.
 
 ## Sanitizers
 
-All 14 tests were built and run with GCC AddressSanitizer + UndefinedBehaviorSanitizer and leak detection enabled.
+All 14 tests were built and run with AddressSanitizer + UndefinedBehaviorSanitizer and leak detection enabled in GitHub CI for the fix.
 
 Result: **passed with no reported sanitizer error**.
+
+The targeted wrap regression and extended local wrap stress were also exercised under sanitizers.
+
+## GitHub CI validation
+
+The fix PR completed all configured CI jobs successfully before merge:
+
+- host GCC tests: passed;
+- host Clang tests: passed;
+- ASan/UBSan: passed;
+- size-oriented build: passed;
+- Arduino-ESP32 3.3.11 example compilation: passed.
 
 ## Test coverage
 
@@ -81,7 +111,7 @@ The CMake suite contains 14 tests:
 - `test_next_deadline`
 - `test_freelist`
 
-### Nearest-deadline coverage
+### Nearest-deadline / wrap coverage
 
 `test_next_deadline` verifies:
 
@@ -92,10 +122,18 @@ The CMake suite contains 14 tests:
 - same-deadline expiration;
 - a resumed coroutine scheduling its next delay;
 - clock movement larger than `INT32_MAX` without signed half-range semantics;
-- 32-bit wrap boundary;
+- ordinary 32-bit wrap boundary;
+- wrap occurring inside a due scan while a resumed coroutine re-arms;
+- no premature firing of another timer spanning that same wrap;
 - exact full-range `max_delay_ms` progress in chunks;
 - max-delay overshoot after a complete clock wrap;
 - 500 deterministic full-range reference rounds using a 64-bit logical elapsed counter only in the test oracle.
+
+### Extended wrap stress
+
+The 1.0.1 fix was additionally exercised locally with **10,000 wrap-during-`poll()` cycles** involving simultaneous due timers, a timer spanning the wrap, and a resumed coroutine immediately registering its next delay.
+
+Result: **passed without premature firing or leaked timer/frame state**.
 
 ### Free-list coverage
 
@@ -124,21 +162,25 @@ The free-list is intrusive: its link is stored in bytes of a frame that is alrea
 
 The scheduler does not rely on `now >= deadline` alone and does not cast the deadline difference to signed 32-bit arithmetic. A small modulo wrap epoch distinguishes current-, next-, and overdue-epoch deadlines while preserving the full `uint32_t` delay range.
 
-Verified cases include ordinary wrap, `UINT32_MAX` single delay, large poll gaps, and full-wrap overshoot.
+Version 1.0.1 additionally guarantees that a due scan does not continue pairing a stale pre-wrap `now` with a newer epoch after a resumed coroutine observes the wrap and re-arms.
+
+Verified cases include ordinary wrap, wrap-during-resume/re-arm, `UINT32_MAX` single delay, large poll gaps, and full-wrap overshoot.
 
 ## Performance / RAM / Flash
 
-See `BENCHMARKS.md` for methodology and capacity data. At the default capacity 32 on the documented host:
+See `BENCHMARKS.md` for methodology and capacity data. The published nanosecond table is retained as the reproducible **1.0.0 baseline** and is not relabeled as a 1.0.1 measurement.
 
-- waiting `poll()`, same tick: **1.127 ns**;
-- waiting `poll()`, clock advancing: **1.505 ns**;
-- alloc/free near capacity: **0.918 ns**;
-- 32 same-deadline expirations: **97.749 ns**;
-- no active timers: **0.575 ns**.
+Same-environment local comparison of the 1.0.1 fix showed:
 
-The size-oriented host proxy at capacity 32 records approximately 2727 B `.text`, 553 B `.data`, and 4696 B `.bss` with LTO. Representative raw static state on a 32-bit MCU is estimated at about 4499 B, subject to target ABI/alignment.
+- no meaningful regression in the common no-deadline-due `poll()` fast path;
+- approximately **+42 B `.text`** in the size-oriented host proxy;
+- **no `.bss` increase**;
+- a small due/expire-path cost from one predictable epoch check after a resumed timer;
+- the scan restart itself is only taken on the rare epoch change during that scan.
 
-These are host regression measurements and structure-level estimates, not MCU timing or exact linker guarantees.
+GitHub CI also passed the size-oriented build. Absolute linker totals from runner images/toolchain revisions are not compared directly against the historical 1.0.0 local numbers.
+
+These remain host regression measurements and structure-level estimates, not MCU timing or exact linker guarantees.
 
 ## Embedded validation
 
@@ -161,6 +203,8 @@ tinyawait::poll();
 tinyawait::max_delay_ms;
 ```
 
+There is **no public API change in 1.0.1**.
+
 No priority queue, STL dynamic container, executor, RTOS dependency, dynamic scheduler, or timing wheel is used.
 
 ## Final review checklist
@@ -170,7 +214,8 @@ Reviewed specifically for:
 - stale nearest-deadline state;
 - missed/late timers;
 - same-deadline behavior;
-- wraparound and full-range delay behavior;
+- ordinary wraparound and full-range delay behavior;
+- wrap occurring during a resumed coroutine's re-arm;
 - timers scheduled during resume;
 - free-list lost/duplicate slots and cycles;
 - allocator exhaustion/reuse;

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(TinyAwait VERSION 1.0.0 LANGUAGES CXX)
+project(TinyAwait VERSION 1.0.1 LANGUAGES CXX)
 
 add_library(TinyAwait INTERFACE)
 add_library(TinyAwait::TinyAwait ALIAS TinyAwait)

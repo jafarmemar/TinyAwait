@@ -1,6 +1,6 @@
-# TinyAwait Benchmarks — 1.0.0
+# TinyAwait Benchmarks — 1.0.x
 
-These measurements describe the initial public TinyAwait 1.0.0 snapshot. They are host regression measurements, **not MCU timing guarantees**.
+The runtime measurements below are the original TinyAwait 1.0.0 host baseline. They are retained unchanged for reproducibility and are **not MCU timing guarantees**. Version 1.0.1 is a correctness patch for an exact wrap-during-resume/re-arm edge case; its version-specific impact is documented separately below rather than relabeling old measurements as new ones.
 
 ## Environment and methodology
 
@@ -13,7 +13,7 @@ These measurements describe the initial public TinyAwait 1.0.0 snapshot. They ar
 - Default `TINYAWAIT_FRAME_SIZE`: 128
 - Multiple complete runs were collected; medians are reported.
 
-## Current scheduler results
+## 1.0.0 scheduler baseline
 
 At the default capacity of 32, representative GCC 14.2 medians are:
 
@@ -29,6 +29,20 @@ The nearest-deadline fast path keeps repeated `poll()` calls O(1) while all time
 
 The frame allocator uses an intrusive fixed-capacity free-list, so frame allocation and reuse are O(1). Free-list links live inside frame storage that is already free; there is no heap fallback or dynamic container.
 
+## 1.0.1 wrap-fix impact
+
+Version 1.0.1 adds a rare-path check after a resumed coroutine returns control to the due scan. If that coroutine registered another delay after the 32-bit millisecond clock wrapped, the scan restarts from the updated clock state instead of continuing with a stale pre-wrap `now` value.
+
+Same-environment local comparison of the fix showed:
+
+- no meaningful regression in the common future-deadline `poll()` fast path;
+- approximately **+42 B `.text`** in the size-oriented host proxy;
+- **no `.bss` increase**;
+- a small due/expire-path cost from one predictable epoch check per resumed timer;
+- the recovery/restart branch is only taken when the clock epoch actually changes during that due scan.
+
+GitHub CI for the fix passed GCC and Clang host tests, ASan/UBSan, the size-oriented build, and all Arduino-ESP32 example compilations. Absolute linker totals from a different runner/toolchain image should not be compared directly with the historical 1.0.0 numbers below.
+
 ## Capacity scaling
 
 `benchmarks/benchmark_matrix.cpp` supports measurements at capacities:
@@ -43,7 +57,7 @@ The fixed-table design remains intentionally simple: when a deadline is actually
 
 ## Frame allocation / release scaling
 
-Representative allocation+release medians near pool capacity:
+Representative 1.0.0 allocation+release medians near pool capacity:
 
 | Capacity | ns per pair |
 |---:|---:|
@@ -83,7 +97,7 @@ On the x86_64 size probe at capacity 32, `TimerSlot` is 16 B and `FrameSlot` is 
 
 ## Flash / linked-size proxy
 
-Capacity 32 with the documented size-oriented flags:
+The historical 1.0.0 capacity-32 result with the documented size-oriented flags was:
 
 ```text
 .text: 2727 B
@@ -91,7 +105,7 @@ Capacity 32 with the documented size-oriented flags:
 .bss:  4696 B
 ```
 
-This is a host linked-code regression signal, not an MCU Flash guarantee. Actual Flash/RAM usage must be measured with the target toolchain when exact embedded numbers matter.
+The 1.0.1 local same-environment comparison added approximately 42 B of `.text` and did not increase `.bss`. Actual Flash/RAM usage must be measured with the target toolchain when exact embedded numbers matter.
 
 ## Coroutine frame size
 
@@ -110,7 +124,8 @@ Result: **0 additional global heap allocations in the TinyAwait path.**
 The verification suite includes:
 
 - full `uint32_t` maximum delay
-- 32-bit clock wraparound
+- ordinary 32-bit clock wraparound
+- wrap occurring during `poll()` while a resumed coroutine re-arms another delay
 - nearest-deadline recomputation and earlier insertion
 - same-deadline timers
 - sparse polling across very large elapsed intervals
@@ -142,4 +157,4 @@ Collect multiple complete runs and report a median.
 
 The scheduler still scans the fixed timer table when at least one deadline is due. That is deliberate: for small embedded timer populations it keeps the architecture compact, deterministic, heap-free, and easy to audit. The fast path removes the scan from the common "nothing due yet" case.
 
-For very large populations with frequent expirations, a different scheduler data structure may eventually be justified. That is future work, not part of TinyAwait 1.0.0.
+For very large populations with frequent expirations, a different scheduler data structure may eventually be justified. That remains outside the TinyAwait 1.0.1 design target.
