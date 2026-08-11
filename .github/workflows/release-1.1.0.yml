@@ -1,0 +1,53 @@
+name: Publish TinyAwait 1.1.0
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-1.1.0.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish v1.1.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          tag="v1.1.0"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$tag already exists; nothing to publish."
+            exit 0
+          fi
+
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          ## TinyAwait 1.1.0
+
+          TinyAwait now stores coroutine frames in one fixed-memory, variable-size arena instead of equal-size frame slots.
+
+          ### What changed
+
+          - Coroutine frames use the size requested by the compiler within a fixed total memory budget.
+          - `TINYAWAIT_FRAME_POOL_BYTES` can set that budget directly.
+          - `TINYAWAIT_FRAME_SIZE` remains supported for existing configurations, but it is no longer a hard per-coroutine frame limit.
+          - `TINYAWAIT_MAX_TASKS` still controls the maximum number of simultaneously live frames.
+          - Released spans are reused and adjacent free spans are merged without falling back to the heap.
+          - The timer scheduler, `co_await` syntax, full-range delays, and clock-wrap behavior are unchanged.
+
+          ### Verification
+
+          The release is gated by GCC and Clang host tests, allocator-focused checks at `-O0`, `-O2`, and `-Os`, ASan/UBSan, a size-oriented build, and Arduino-ESP32 3.3.11 example compilation.
+
+          See `README.md`, `BENCHMARKS.md`, and `VERIFICATION.md` for memory configuration, performance trade-offs, and design limits.
+          EOF
+
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "TinyAwait 1.1.0" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
