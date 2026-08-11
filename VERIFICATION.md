@@ -1,8 +1,6 @@
-# Verification Report — TinyAwait 1.1.0
+# Verification Report — TinyAwait 1.1.1
 
-This report describes the checks used for TinyAwait 1.1.0, which changes coroutine-frame storage from equal-size slots to a fixed-memory variable-size arena.
-
-The timer scheduler and public coroutine syntax are unchanged.
+TinyAwait 1.1.1 simplifies frame-memory configuration without changing the scheduler, coroutine syntax, or variable-size frame allocator introduced in 1.1.0.
 
 ## Configuration under review
 
@@ -16,16 +14,11 @@ The timer scheduler and public coroutine syntax are unchanged.
 - wrap-safe full-range `uint32_t` timing
 - nearest-deadline `poll()` fast path
 
-The public programming model remains:
+The normal programming model remains:
 
 ```cpp
 Async task() {
     co_await 500;
-}
-
-Async parent() {
-    co_await child();
-    co_await 1000;
 }
 
 void loop() {
@@ -33,7 +26,20 @@ void loop() {
 }
 ```
 
-`tinyawait::max_delay_ms` remains `UINT32_MAX`.
+## Memory configuration
+
+Current code has two memory-related settings:
+
+```cpp
+TINYAWAIT_MAX_TASKS
+TINYAWAIT_FRAME_POOL_BYTES
+```
+
+No memory macro is required for ordinary use. The default pool budget scales with `TINYAWAIT_MAX_TASKS`, preserving the previous RAM behavior for small configurations.
+
+`TINYAWAIT_FRAME_SIZE` is deprecated and is no longer defined by TinyAwait or shown as a current configuration option. A compatibility path still accepts it when an older project defines it and no explicit pool budget is provided.
+
+The compatibility path is covered by a dedicated regression test so deprecation does not silently break existing firmware builds.
 
 ## Frame arena design
 
@@ -41,29 +47,28 @@ TinyAwait receives the compiler-requested coroutine frame size and allocates an 
 
 The common paths are intentionally short:
 
-- a fresh frame extends the bump frontier;
-- a LIFO release retreats the bump frontier;
+- fresh frames extend the bump frontier;
+- LIFO releases retreat the bump frontier;
 - non-LIFO releases become address-sorted free spans;
 - adjacent free spans are merged;
 - free space at the arena tail is reclaimed when needed.
 
-Free-span metadata is stored inside memory that is already free. Metadata is read and written with byte copies, so the allocator does not depend on creating long-lived metadata objects inside the coroutine storage.
+Free-span metadata lives inside memory that is already free and is read and written with byte copies.
 
-`TINYAWAIT_MAX_TASKS` still limits the number of live frames. `TINYAWAIT_FRAME_POOL_BYTES` can set the total byte budget directly. Existing `TINYAWAIT_FRAME_SIZE` configurations remain accepted and are used to derive the default total budget when the explicit pool setting is absent.
+## Host validation
 
-## Local engineering validation
+The release candidate is checked with GCC and Clang. Allocator-focused tests run at `-O0`, `-O2`, and `-Os`, with warnings treated as errors and exceptions/RTTI disabled.
 
-The allocator and coroutine lifecycle changes were cross-checked with GCC and Clang at `-O0`, `-O2`, and `-Os`, using warnings-as-errors with exceptions and RTTI disabled.
+Coverage includes:
 
-Targeted validation covered:
-
-- frames larger than the old 128-byte default slot;
+- default configuration;
+- explicit `TINYAWAIT_FRAME_POOL_BYTES` budgets;
+- deprecated configuration compatibility;
+- frames larger than the old fixed-slot size;
 - large nested parent/child coroutines;
-- large detached coroutines;
+- detached coroutines;
 - live-frame count exhaustion;
 - byte-budget exhaustion;
-- explicit and legacy pool configuration;
-- very small legacy `TINYAWAIT_FRAME_SIZE` values;
 - arena alignment and bounds;
 - overlapping-live-frame detection;
 - split-span reuse;
@@ -73,11 +78,11 @@ Targeted validation covered:
 - one million deterministic variable-size allocator operations;
 - repeated no-heap coroutine lifecycles.
 
-Representative allocator and integration tests were also run with AddressSanitizer and UndefinedBehaviorSanitizer without reported errors.
+ASan/UBSan is also part of the repository CI gate.
 
-## Repository CI release gate
+## Repository CI gate
 
-The release commit is required to pass all configured GitHub Actions jobs before it is merged:
+The exact release candidate must pass:
 
 - full host suite with GCC;
 - full host suite with Clang;
@@ -86,7 +91,7 @@ The release commit is required to pass all configured GitHub Actions jobs before
 - size-oriented build;
 - all Arduino examples compiled with Arduino-ESP32 3.3.11.
 
-Timing benchmarks are not used as pass/fail thresholds because small host timing differences are noisy.
+Timing benchmarks are not used as pass/fail thresholds because very small host timing differences are noisy.
 
 ## Host test suite
 
@@ -97,7 +102,7 @@ The CMake suite contains 16 tests:
 - `test_capacity`
 - `test_no_heap`
 - `test_stress`
-- `test_frame_size`
+- `test_frame_pool`
 - `test_nested`
 - `test_max_delay`
 - `test_default_capacity`
@@ -107,21 +112,19 @@ The CMake suite contains 16 tests:
 - `test_next_deadline`
 - `test_freelist`
 - `test_variable_frames`
-- `test_legacy_small_pool`
+- `test_legacy_config`
 
-### Variable-frame coverage
-
-`test_frame_size` verifies that a coroutine larger than the legacy per-frame setting can run when the shared arena has enough room, and that a frame larger than the entire arena fails through the configured error hook.
+`test_frame_pool` verifies explicit shared-pool sizing, successful use of a frame larger than the old slot model, and failure when a frame is larger than the whole pool.
 
 `test_variable_frames` exercises large parent/child and detached coroutine lifetimes through the real C++ coroutine allocation and destruction path.
 
-`test_freelist` stress-tests the arena directly with variable-size requests and validates alignment, bounds, non-overlap, active-frame accounting, split reuse, coalescing, full recovery, and the live-frame limit.
+`test_freelist` validates alignment, bounds, non-overlap, active-frame accounting, split reuse, coalescing, full recovery, and live-frame limits under variable-size stress.
 
-`test_legacy_small_pool` protects source compatibility for very small legacy frame settings.
+`test_legacy_config` protects source compatibility for projects that still define the deprecated frame-size setting.
 
-### Timer and wrap coverage
+## Timer and wrap coverage
 
-The existing scheduler tests continue to verify:
+The scheduler tests continue to verify:
 
 - zero and short delays;
 - sequential and nested delays;
@@ -140,19 +143,19 @@ The 1.0.1 wrap-during-rearm regression remains part of the permanent suite.
 
 ## No-heap behavior
 
-`Async::promise_type` supplies its own coroutine frame allocator. The implementation has no fallback to global `new`, `malloc`, or a dynamic container.
+`Async::promise_type` supplies its own coroutine frame allocator. There is no fallback to global `new`, `malloc`, or a dynamic container.
 
-The no-heap regression test instruments global allocation while running repeated nested TinyAwait sequences and verifies that TinyAwait does not add global heap allocations.
+The no-heap regression test instruments global allocation while running repeated nested TinyAwait sequences.
 
 ## Performance and size review
 
-The timer hot path is unchanged from 1.0.1.
+Version 1.1.1 does not change the allocator or scheduler runtime paths. The 1.1.0 performance comparison therefore remains applicable.
 
-In the same-host allocator comparison, isolated variable-size allocation is slower than the old equal-slot free-list. A complete create/suspend/resume/destroy coroutine cycle remained effectively unchanged within normal host measurement noise. The size-oriented host proxy adds roughly 0.55 KiB of linked code.
+The timer fast path is unchanged, and the variable-size arena keeps its bump, LIFO, free-span reuse, and coalescing behavior.
 
-Those results are documented in [BENCHMARKS.md](BENCHMARKS.md). They are regression measurements, not MCU timing or Flash guarantees.
+See [BENCHMARKS.md](BENCHMARKS.md) for measurements and limitations.
 
-## Known limits reviewed for release
+## Known limits
 
 - TinyAwait is cooperative, single-threaded, and not ISR-safe.
 - `poll()` is not reentrant.
@@ -162,15 +165,15 @@ Those results are documented in [BENCHMARKS.md](BENCHMARKS.md). They are regress
 - The timer table is scanned when at least one deadline is due.
 - All TinyAwait configuration macros must match across translation units.
 - A production `TINYAWAIT_ON_ERROR()` hook should be fatal/non-returning.
-- Over-aligned coroutine locals remain compiler- and ABI-dependent and should be verified on the target toolchain.
+- Over-aligned coroutine locals remain compiler- and ABI-dependent.
 - Exact MCU timing, RAM placement, and Flash size require measurement with the target compiler and hardware.
 
-## Final release checklist
+## Release checklist
 
-Before publishing 1.1.0:
+Before publishing 1.1.1:
 
 - all CI jobs must be green on the exact merge candidate;
 - version metadata must agree across CMake, Arduino, and PlatformIO files;
-- README, benchmarks, changelog, and this report must describe the variable-frame model;
+- README, benchmarks, changelog, and this report must describe the simplified configuration;
 - the release tag must point to the merged `main` commit;
-- no temporary release helper should remain in the repository after the release is confirmed.
+- no temporary release helper should remain after the release is confirmed.
