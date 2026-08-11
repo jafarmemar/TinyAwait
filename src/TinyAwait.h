@@ -2,7 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <new>
+#include <cstring>
+#include <limits>
 #include <type_traits>
 
 #if __cplusplus < 202002L
@@ -21,9 +22,9 @@
 #define TINYAWAIT_FRAME_SIZE 128
 #endif
 
-#ifndef TINYAWAIT_FRAME_POOL_BYTES
-#define TINYAWAIT_FRAME_POOL_BYTES (TINYAWAIT_MAX_TASKS * TINYAWAIT_FRAME_SIZE)
-#endif
+// TINYAWAIT_FRAME_POOL_BYTES sets the total byte budget for coroutine frames.
+// When it is omitted, the legacy task-count/frame-size settings define the
+// default budget and keep existing configurations source-compatible.
 
 #ifndef TINYAWAIT_NOW_MS
 #if defined(ARDUINO)
@@ -36,7 +37,9 @@
 
 static_assert(TINYAWAIT_MAX_TASKS > 0, "TINYAWAIT_MAX_TASKS must be greater than zero");
 static_assert(TINYAWAIT_FRAME_SIZE > 0, "TINYAWAIT_FRAME_SIZE must be greater than zero");
+#ifdef TINYAWAIT_FRAME_POOL_BYTES
 static_assert(TINYAWAIT_FRAME_POOL_BYTES > 0, "TINYAWAIT_FRAME_POOL_BYTES must be greater than zero");
+#endif
 
 namespace tinyawait {
 namespace detail {
@@ -55,26 +58,47 @@ namespace detail {
 
 struct FreeFrameBlock {
     std::size_t size;
-    FreeFrameBlock* next;
+    std::byte* next;
 };
 
 inline constexpr std::size_t frame_alignment = alignof(std::max_align_t);
 inline constexpr std::size_t frame_min_block =
     ((sizeof(FreeFrameBlock) + frame_alignment - 1U) / frame_alignment) * frame_alignment;
+inline constexpr std::size_t legacy_frame_block =
+    ((static_cast<std::size_t>(TINYAWAIT_FRAME_SIZE) + frame_alignment - 1U) /
+     frame_alignment) *
+    frame_alignment;
+
+#ifdef TINYAWAIT_FRAME_POOL_BYTES
+inline constexpr std::size_t frame_pool_storage_bytes =
+    static_cast<std::size_t>(TINYAWAIT_FRAME_POOL_BYTES);
+#else
+static_assert(
+    static_cast<std::size_t>(TINYAWAIT_MAX_TASKS) <=
+        (std::numeric_limits<std::size_t>::max)() /
+            (legacy_frame_block < frame_min_block ? frame_min_block : legacy_frame_block),
+    "TinyAwait frame-pool size overflows size_t");
+inline constexpr std::size_t frame_pool_storage_bytes =
+    static_cast<std::size_t>(TINYAWAIT_MAX_TASKS) *
+    (legacy_frame_block < frame_min_block ? frame_min_block : legacy_frame_block);
+#endif
+
 inline constexpr std::size_t frame_pool_usable_bytes =
-    (static_cast<std::size_t>(TINYAWAIT_FRAME_POOL_BYTES) / frame_alignment) * frame_alignment;
+    (frame_pool_storage_bytes / frame_alignment) * frame_alignment;
 
 static_assert(
     frame_pool_usable_bytes >= frame_min_block,
-    "TINYAWAIT_FRAME_POOL_BYTES is too small for TinyAwait frame allocator metadata");
+    "TinyAwait frame pool is too small for allocator metadata");
 
-alignas(std::max_align_t) inline std::byte frame_pool[TINYAWAIT_FRAME_POOL_BYTES]{};
-using FrameIndex = std::conditional_t<
+alignas(std::max_align_t) inline std::byte frame_pool[frame_pool_storage_bytes]{};
+
+using FrameCount = std::conditional_t<
     (TINYAWAIT_MAX_TASKS <= 0xFFU), std::uint8_t,
     std::conditional_t<(TINYAWAIT_MAX_TASKS <= 0xFFFFU), std::uint16_t, std::size_t>>;
-inline FreeFrameBlock* free_frame_head = nullptr;
+
+inline std::byte* free_frame_head = nullptr;
 inline std::size_t frame_bump_bytes = 0;
-inline FrameIndex active_frame_count = 0;
+inline FrameCount active_frame_count = 0;
 
 #ifdef TINYAWAIT_TESTING
 inline std::size_t last_frame_bytes = 0;
@@ -88,83 +112,81 @@ inline constexpr std::size_t normalize_frame_size(std::size_t size) noexcept {
     return ((at_least_metadata + frame_alignment - 1U) / frame_alignment) * frame_alignment;
 }
 
+inline FreeFrameBlock load_free_block(const std::byte* address) noexcept {
+    FreeFrameBlock block{};
+    std::memcpy(&block, address, sizeof(block));
+    return block;
+}
+
+inline void store_free_block(
+    std::byte* address, std::size_t size, std::byte* next) noexcept {
+    const FreeFrameBlock block{size, next};
+    std::memcpy(address, &block, sizeof(block));
+}
+
+inline void set_free_next(std::byte* address, std::byte* next) noexcept {
+    std::memcpy(address + offsetof(FreeFrameBlock, next), &next, sizeof(next));
+}
+
 inline void reclaim_free_bump_tail() noexcept {
     for (;;) {
-        FreeFrameBlock* previous = nullptr;
-        auto* block = free_frame_head;
-        while (block &&
-               static_cast<std::size_t>(reinterpret_cast<std::byte*>(block) - frame_pool) +
-                       block->size <
-                   frame_bump_bytes) {
-            previous = block;
-            block = block->next;
-        }
-        if (!block) return;
+        std::byte* previous = nullptr;
+        auto* block_address = free_frame_head;
 
-        const auto offset =
-            static_cast<std::size_t>(reinterpret_cast<std::byte*>(block) - frame_pool);
-        if (offset + block->size != frame_bump_bytes) return;
+        while (block_address) {
+            const auto block = load_free_block(block_address);
+            const auto offset = static_cast<std::size_t>(block_address - frame_pool);
+            if (offset + block.size >= frame_bump_bytes) break;
+            previous = block_address;
+            block_address = block.next;
+        }
+
+        if (!block_address) return;
+
+        const auto block = load_free_block(block_address);
+        const auto offset = static_cast<std::size_t>(block_address - frame_pool);
+        if (offset + block.size != frame_bump_bytes) return;
 
         frame_bump_bytes = offset;
-        if (previous) previous->next = block->next;
-        else free_frame_head = block->next;
+        if (previous) set_free_next(previous, block.next);
+        else free_frame_head = block.next;
     }
 }
 
-inline void* alloc_frame(std::size_t size) noexcept {
+inline void* alloc_frame_slow(std::size_t needed) noexcept {
 #ifdef TINYAWAIT_TESTING
-    last_frame_bytes = size;
-    if (size > max_frame_bytes) max_frame_bytes = size;
     std::size_t search_steps = 0;
 #endif
+    std::byte* previous = nullptr;
+    auto* block_address = free_frame_head;
 
-    if (size > frame_pool_usable_bytes ||
-        static_cast<std::size_t>(active_frame_count) >= TINYAWAIT_MAX_TASKS) {
-        return nullptr;
-    }
-
-    const auto needed = normalize_frame_size(size);
-
-    // Hot path: no released holes exist, so extend the compact bump frontier.
-    if (!free_frame_head) {
-        if (needed > frame_pool_usable_bytes - frame_bump_bytes) return nullptr;
-        void* frame = frame_pool + frame_bump_bytes;
-        frame_bump_bytes += needed;
-        ++active_frame_count;
-        return frame;
-    }
-
-    FreeFrameBlock* previous = nullptr;
-    auto* block = free_frame_head;
-    while (block && block->size < needed) {
+    while (block_address) {
+        const auto block = load_free_block(block_address);
 #ifdef TINYAWAIT_TESTING
         ++search_steps;
 #endif
-        previous = block;
-        block = block->next;
+        if (block.size >= needed) break;
+        previous = block_address;
+        block_address = block.next;
     }
 
-    if (block) {
+    if (block_address) {
+        const auto block = load_free_block(block_address);
 #ifdef TINYAWAIT_TESTING
-        ++search_steps;
         frame_alloc_search_steps += search_steps;
         if (search_steps > frame_alloc_search_max) frame_alloc_search_max = search_steps;
 #endif
-
-        const auto remaining = block->size - needed;
+        const auto remaining = block.size - needed;
         if (remaining != 0U) {
-            auto* split_address = reinterpret_cast<std::byte*>(block) + needed;
-            auto* split = ::new (static_cast<void*>(split_address))
-                FreeFrameBlock{remaining, block->next};
-            if (previous) previous->next = split;
+            auto* split = block_address + needed;
+            store_free_block(split, remaining, block.next);
+            if (previous) set_free_next(previous, split);
             else free_frame_head = split;
         } else {
-            if (previous) previous->next = block->next;
-            else free_frame_head = block->next;
+            if (previous) set_free_next(previous, block.next);
+            else free_frame_head = block.next;
         }
-
-        ++active_frame_count;
-        return block;
+        return block_address;
     }
 
 #ifdef TINYAWAIT_TESTING
@@ -177,10 +199,68 @@ inline void* alloc_frame(std::size_t size) noexcept {
         if (needed > frame_pool_usable_bytes - frame_bump_bytes) return nullptr;
     }
 
-    void* frame = frame_pool + frame_bump_bytes;
+    auto* frame = frame_pool + frame_bump_bytes;
     frame_bump_bytes += needed;
+    return frame;
+}
+
+inline void* alloc_frame(std::size_t size) noexcept {
+#ifdef TINYAWAIT_TESTING
+    last_frame_bytes = size;
+    if (size > max_frame_bytes) max_frame_bytes = size;
+#endif
+
+    if (size > frame_pool_usable_bytes ||
+        static_cast<std::size_t>(active_frame_count) >= TINYAWAIT_MAX_TASKS) {
+        return nullptr;
+    }
+
+    const auto needed = normalize_frame_size(size);
+    void* frame = nullptr;
+
+    if (!free_frame_head) [[likely]] {
+        if (needed > frame_pool_usable_bytes - frame_bump_bytes) return nullptr;
+        frame = frame_pool + frame_bump_bytes;
+        frame_bump_bytes += needed;
+    } else {
+        frame = alloc_frame_slow(needed);
+        if (!frame) return nullptr;
+    }
+
     ++active_frame_count;
     return frame;
+}
+
+inline void free_frame_slow(std::byte* address, std::size_t released) noexcept {
+    std::byte* previous = nullptr;
+    auto* next_address = free_frame_head;
+    while (next_address && next_address < address) {
+        previous = next_address;
+        next_address = load_free_block(next_address).next;
+    }
+
+    const auto next_block =
+        next_address ? load_free_block(next_address) : FreeFrameBlock{};
+    std::size_t block_size = released;
+    std::byte* block_next = next_address;
+
+    if (next_address && address + block_size == next_address) {
+        block_size += next_block.size;
+        block_next = next_block.next;
+    }
+
+    if (previous) {
+        auto previous_block = load_free_block(previous);
+        if (previous + previous_block.size == address) {
+            store_free_block(previous, previous_block.size + block_size, block_next);
+        } else {
+            store_free_block(address, block_size, block_next);
+            set_free_next(previous, address);
+        }
+    } else {
+        store_free_block(address, block_size, block_next);
+        free_frame_head = address;
+    }
 }
 
 inline void free_frame(void* ptr, std::size_t size) noexcept {
@@ -190,33 +270,10 @@ inline void free_frame(void* ptr, std::size_t size) noexcept {
     auto* address = static_cast<std::byte*>(ptr);
     const auto offset = static_cast<std::size_t>(address - frame_pool);
 
-    // Common LIFO release: retreat the bump frontier immediately. Any lower
-    // adjacent free span is merged lazily only if a later allocation needs it.
-    if (offset + released == frame_bump_bytes) {
+    if (offset + released == frame_bump_bytes) [[likely]] {
         frame_bump_bytes = offset;
-        --active_frame_count;
-        return;
-    }
-
-    FreeFrameBlock* previous = nullptr;
-    auto* next = free_frame_head;
-    while (next && reinterpret_cast<std::byte*>(next) < address) {
-        previous = next;
-        next = next->next;
-    }
-
-    auto* block = ::new (ptr) FreeFrameBlock{released, next};
-    if (previous) previous->next = block;
-    else free_frame_head = block;
-
-    if (next && address + block->size == reinterpret_cast<std::byte*>(next)) {
-        block->size += next->size;
-        block->next = next->next;
-    }
-    if (previous &&
-        reinterpret_cast<std::byte*>(previous) + previous->size == address) {
-        previous->size += block->size;
-        previous->next = block->next;
+    } else {
+        free_frame_slow(address, released);
     }
 
     --active_frame_count;
