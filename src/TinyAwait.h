@@ -15,17 +15,10 @@
 #define TINYAWAIT_MAX_TASKS 32
 #endif
 
-// Kept for source/configuration compatibility. It is no longer a hard
-// per-coroutine-frame limit; unless TINYAWAIT_FRAME_POOL_BYTES is defined,
-// it contributes to the total frame-memory budget below.
-#ifndef TINYAWAIT_FRAME_SIZE
-#define TINYAWAIT_FRAME_SIZE 128
-#endif
-
-// TINYAWAIT_FRAME_POOL_BYTES sets the total byte budget for coroutine frames.
-// When it is omitted, the legacy task-count/frame-size settings define the
-// default budget and keep existing configurations source-compatible.
-
+// Optional explicit byte budget for all live coroutine frames. When omitted,
+// TinyAwait keeps the historical default of roughly 128 bytes per task.
+// TINYAWAIT_FRAME_SIZE is deprecated and recognized only for source
+// compatibility with older configurations.
 #ifndef TINYAWAIT_NOW_MS
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -36,9 +29,14 @@
 #endif
 
 static_assert(TINYAWAIT_MAX_TASKS > 0, "TINYAWAIT_MAX_TASKS must be greater than zero");
-static_assert(TINYAWAIT_FRAME_SIZE > 0, "TINYAWAIT_FRAME_SIZE must be greater than zero");
 #ifdef TINYAWAIT_FRAME_POOL_BYTES
-static_assert(TINYAWAIT_FRAME_POOL_BYTES > 0, "TINYAWAIT_FRAME_POOL_BYTES must be greater than zero");
+static_assert(
+    static_cast<std::size_t>(TINYAWAIT_FRAME_POOL_BYTES) > 0,
+    "TINYAWAIT_FRAME_POOL_BYTES must be greater than zero");
+#elif defined(TINYAWAIT_FRAME_SIZE)
+static_assert(
+    static_cast<std::size_t>(TINYAWAIT_FRAME_SIZE) > 0,
+    "Deprecated TINYAWAIT_FRAME_SIZE must be greater than zero");
 #endif
 
 namespace tinyawait {
@@ -64,23 +62,29 @@ struct FreeFrameBlock {
 inline constexpr std::size_t frame_alignment = alignof(std::max_align_t);
 inline constexpr std::size_t frame_min_block =
     ((sizeof(FreeFrameBlock) + frame_alignment - 1U) / frame_alignment) * frame_alignment;
-inline constexpr std::size_t legacy_frame_block =
-    ((static_cast<std::size_t>(TINYAWAIT_FRAME_SIZE) + frame_alignment - 1U) /
-     frame_alignment) *
-    frame_alignment;
 
 #ifdef TINYAWAIT_FRAME_POOL_BYTES
 inline constexpr std::size_t frame_pool_storage_bytes =
     static_cast<std::size_t>(TINYAWAIT_FRAME_POOL_BYTES);
 #else
+#ifdef TINYAWAIT_FRAME_SIZE
+inline constexpr std::size_t default_frame_budget_per_task =
+    static_cast<std::size_t>(TINYAWAIT_FRAME_SIZE);
+#else
+inline constexpr std::size_t default_frame_budget_per_task = 128U;
+#endif
+inline constexpr std::size_t default_frame_block =
+    ((default_frame_budget_per_task + frame_alignment - 1U) / frame_alignment) *
+    frame_alignment;
+inline constexpr std::size_t default_frame_storage_per_task =
+    default_frame_block < frame_min_block ? frame_min_block : default_frame_block;
+
 static_assert(
     static_cast<std::size_t>(TINYAWAIT_MAX_TASKS) <=
-        (std::numeric_limits<std::size_t>::max)() /
-            (legacy_frame_block < frame_min_block ? frame_min_block : legacy_frame_block),
+        (std::numeric_limits<std::size_t>::max)() / default_frame_storage_per_task,
     "TinyAwait frame-pool size overflows size_t");
 inline constexpr std::size_t frame_pool_storage_bytes =
-    static_cast<std::size_t>(TINYAWAIT_MAX_TASKS) *
-    (legacy_frame_block < frame_min_block ? frame_min_block : legacy_frame_block);
+    static_cast<std::size_t>(TINYAWAIT_MAX_TASKS) * default_frame_storage_per_task;
 #endif
 
 inline constexpr std::size_t frame_pool_usable_bytes =
