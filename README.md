@@ -210,7 +210,7 @@ The production error hook should **not return**.
 ```cpp
 #include "stm32xxxx_hal.h"
 #define TINYAWAIT_NOW_MS() HAL_GetTick()
-#include <TinyAwait.h>
+#include "TinyAwait.h"
 ```
 
 ### Raspberry Pi Pico SDK
@@ -221,7 +221,7 @@ The production error hook should **not return**.
 
 #define TINYAWAIT_NOW_MS() \
     static_cast<std::uint32_t>(time_us_64() / 1000ULL)
-#include <TinyAwait.h>
+#include "TinyAwait.h"
 ```
 
 Any other target can provide its own monotonic `uint32_t` millisecond source.
