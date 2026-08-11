@@ -20,7 +20,7 @@ jobs:
         compiler: [gcc, clang]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Select compiler
         run: |
           if [ "${{ matrix.compiler }}" = gcc ]; then
@@ -35,10 +35,33 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  allocator-variants:
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+        optimization: [-O0, -O2, -Os]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and run allocator-focused tests
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tinyawait-allocator-tests"
+          for test in test_frame_size test_freelist test_variable_frames test_legacy_small_pool; do
+            "${{ matrix.compiler }}" \
+              -std=c++20 "${{ matrix.optimization }}" \
+              -Wall -Wextra -Wpedantic -Werror \
+              -fno-exceptions -fno-rtti \
+              -Isrc "tests/${test}.cpp" \
+              -o "$RUNNER_TEMP/tinyawait-allocator-tests/${test}"
+            "$RUNNER_TEMP/tinyawait-allocator-tests/${test}"
+          done
+
   sanitizers:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configure ASan/UBSan
         run: >-
           cmake -S . -B build-sanitize
@@ -56,7 +79,7 @@ jobs:
   size-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Size-optimized build
         run: |
           g++ -std=c++20 -Isrc -Os -flto -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti \
@@ -66,7 +89,7 @@ jobs:
   arduino-examples:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: arduino/setup-arduino-cli@v2
       - name: Show Arduino CLI version
         run: arduino-cli version
