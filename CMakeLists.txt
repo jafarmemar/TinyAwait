@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(TinyAwait VERSION 1.0.1 LANGUAGES CXX)
+project(TinyAwait VERSION 1.1.0 LANGUAGES CXX)
 
 add_library(TinyAwait INTERFACE)
 add_library(TinyAwait::TinyAwait ALIAS TinyAwait)
@@ -42,6 +42,8 @@ if(TINYAWAIT_BUILD_TESTS)
   add_tinyawait_test(test_multitu tests/test_multitu_main.cpp tests/test_multitu_peer.cpp)
   add_tinyawait_test(test_next_deadline tests/test_next_deadline.cpp)
   add_tinyawait_test(test_freelist tests/test_freelist.cpp)
+  add_tinyawait_test(test_variable_frames tests/test_variable_frames.cpp)
+  add_tinyawait_test(test_legacy_small_pool tests/test_legacy_small_pool.cpp)
 endif()
 
 if(TINYAWAIT_BUILD_BENCHMARKS)
