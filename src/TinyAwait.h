@@ -2,7 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
+#include <new>
 #include <type_traits>
 
 #if __cplusplus < 202002L
@@ -14,8 +14,15 @@
 #define TINYAWAIT_MAX_TASKS 32
 #endif
 
+// Kept for source/configuration compatibility. It is no longer a hard
+// per-coroutine-frame limit; unless TINYAWAIT_FRAME_POOL_BYTES is defined,
+// it contributes to the total frame-memory budget below.
 #ifndef TINYAWAIT_FRAME_SIZE
 #define TINYAWAIT_FRAME_SIZE 128
+#endif
+
+#ifndef TINYAWAIT_FRAME_POOL_BYTES
+#define TINYAWAIT_FRAME_POOL_BYTES (TINYAWAIT_MAX_TASKS * TINYAWAIT_FRAME_SIZE)
 #endif
 
 #ifndef TINYAWAIT_NOW_MS
@@ -29,6 +36,7 @@
 
 static_assert(TINYAWAIT_MAX_TASKS > 0, "TINYAWAIT_MAX_TASKS must be greater than zero");
 static_assert(TINYAWAIT_FRAME_SIZE > 0, "TINYAWAIT_FRAME_SIZE must be greater than zero");
+static_assert(TINYAWAIT_FRAME_POOL_BYTES > 0, "TINYAWAIT_FRAME_POOL_BYTES must be greater than zero");
 
 namespace tinyawait {
 namespace detail {
@@ -45,20 +53,174 @@ namespace detail {
 #define TINYAWAIT_ON_ERROR() ::tinyawait::detail::default_failure()
 #endif
 
-inline constexpr std::size_t frame_storage_size =
-    TINYAWAIT_FRAME_SIZE < sizeof(void*) ? sizeof(void*) : TINYAWAIT_FRAME_SIZE;
-struct FrameSlot { alignas(std::max_align_t) std::byte bytes[frame_storage_size]; };
-inline FrameSlot frame_pool[TINYAWAIT_MAX_TASKS]{};
+struct FreeFrameBlock {
+    std::size_t size;
+    FreeFrameBlock* next;
+};
+
+inline constexpr std::size_t frame_alignment = alignof(std::max_align_t);
+inline constexpr std::size_t frame_min_block =
+    ((sizeof(FreeFrameBlock) + frame_alignment - 1U) / frame_alignment) * frame_alignment;
+inline constexpr std::size_t frame_pool_usable_bytes =
+    (static_cast<std::size_t>(TINYAWAIT_FRAME_POOL_BYTES) / frame_alignment) * frame_alignment;
+
+static_assert(
+    frame_pool_usable_bytes >= frame_min_block,
+    "TINYAWAIT_FRAME_POOL_BYTES is too small for TinyAwait frame allocator metadata");
+
+alignas(std::max_align_t) inline std::byte frame_pool[TINYAWAIT_FRAME_POOL_BYTES]{};
 using FrameIndex = std::conditional_t<
     (TINYAWAIT_MAX_TASKS <= 0xFFU), std::uint8_t,
     std::conditional_t<(TINYAWAIT_MAX_TASKS <= 0xFFFFU), std::uint16_t, std::size_t>>;
-inline void* free_frame_head = nullptr;
-inline FrameIndex next_unused_frame = 0;
+inline FreeFrameBlock* free_frame_head = nullptr;
+inline std::size_t frame_bump_bytes = 0;
+inline FrameIndex active_frame_count = 0;
+
 #ifdef TINYAWAIT_TESTING
 inline std::size_t last_frame_bytes = 0;
 inline std::size_t max_frame_bytes = 0;
-inline std::size_t active_frame_count = 0;
+inline std::size_t frame_alloc_search_steps = 0;
+inline std::size_t frame_alloc_search_max = 0;
 #endif
+
+inline constexpr std::size_t normalize_frame_size(std::size_t size) noexcept {
+    const auto at_least_metadata = size < frame_min_block ? frame_min_block : size;
+    return ((at_least_metadata + frame_alignment - 1U) / frame_alignment) * frame_alignment;
+}
+
+inline void reclaim_free_bump_tail() noexcept {
+    for (;;) {
+        FreeFrameBlock* previous = nullptr;
+        auto* block = free_frame_head;
+        while (block &&
+               static_cast<std::size_t>(reinterpret_cast<std::byte*>(block) - frame_pool) +
+                       block->size <
+                   frame_bump_bytes) {
+            previous = block;
+            block = block->next;
+        }
+        if (!block) return;
+
+        const auto offset =
+            static_cast<std::size_t>(reinterpret_cast<std::byte*>(block) - frame_pool);
+        if (offset + block->size != frame_bump_bytes) return;
+
+        frame_bump_bytes = offset;
+        if (previous) previous->next = block->next;
+        else free_frame_head = block->next;
+    }
+}
+
+inline void* alloc_frame(std::size_t size) noexcept {
+#ifdef TINYAWAIT_TESTING
+    last_frame_bytes = size;
+    if (size > max_frame_bytes) max_frame_bytes = size;
+    std::size_t search_steps = 0;
+#endif
+
+    if (size > frame_pool_usable_bytes ||
+        static_cast<std::size_t>(active_frame_count) >= TINYAWAIT_MAX_TASKS) {
+        return nullptr;
+    }
+
+    const auto needed = normalize_frame_size(size);
+
+    // Hot path: no released holes exist, so extend the compact bump frontier.
+    if (!free_frame_head) {
+        if (needed > frame_pool_usable_bytes - frame_bump_bytes) return nullptr;
+        void* frame = frame_pool + frame_bump_bytes;
+        frame_bump_bytes += needed;
+        ++active_frame_count;
+        return frame;
+    }
+
+    FreeFrameBlock* previous = nullptr;
+    auto* block = free_frame_head;
+    while (block && block->size < needed) {
+#ifdef TINYAWAIT_TESTING
+        ++search_steps;
+#endif
+        previous = block;
+        block = block->next;
+    }
+
+    if (block) {
+#ifdef TINYAWAIT_TESTING
+        ++search_steps;
+        frame_alloc_search_steps += search_steps;
+        if (search_steps > frame_alloc_search_max) frame_alloc_search_max = search_steps;
+#endif
+
+        const auto remaining = block->size - needed;
+        if (remaining != 0U) {
+            auto* split_address = reinterpret_cast<std::byte*>(block) + needed;
+            auto* split = ::new (static_cast<void*>(split_address))
+                FreeFrameBlock{remaining, block->next};
+            if (previous) previous->next = split;
+            else free_frame_head = split;
+        } else {
+            if (previous) previous->next = block->next;
+            else free_frame_head = block->next;
+        }
+
+        ++active_frame_count;
+        return block;
+    }
+
+#ifdef TINYAWAIT_TESTING
+    frame_alloc_search_steps += search_steps;
+    if (search_steps > frame_alloc_search_max) frame_alloc_search_max = search_steps;
+#endif
+
+    if (needed > frame_pool_usable_bytes - frame_bump_bytes) {
+        reclaim_free_bump_tail();
+        if (needed > frame_pool_usable_bytes - frame_bump_bytes) return nullptr;
+    }
+
+    void* frame = frame_pool + frame_bump_bytes;
+    frame_bump_bytes += needed;
+    ++active_frame_count;
+    return frame;
+}
+
+inline void free_frame(void* ptr, std::size_t size) noexcept {
+    if (!ptr) return;
+
+    const auto released = normalize_frame_size(size);
+    auto* address = static_cast<std::byte*>(ptr);
+    const auto offset = static_cast<std::size_t>(address - frame_pool);
+
+    // Common LIFO release: retreat the bump frontier immediately. Any lower
+    // adjacent free span is merged lazily only if a later allocation needs it.
+    if (offset + released == frame_bump_bytes) {
+        frame_bump_bytes = offset;
+        --active_frame_count;
+        return;
+    }
+
+    FreeFrameBlock* previous = nullptr;
+    auto* next = free_frame_head;
+    while (next && reinterpret_cast<std::byte*>(next) < address) {
+        previous = next;
+        next = next->next;
+    }
+
+    auto* block = ::new (ptr) FreeFrameBlock{released, next};
+    if (previous) previous->next = block;
+    else free_frame_head = block;
+
+    if (next && address + block->size == reinterpret_cast<std::byte*>(next)) {
+        block->size += next->size;
+        block->next = next->next;
+    }
+    if (previous &&
+        reinterpret_cast<std::byte*>(previous) + previous->size == address) {
+        previous->size += block->size;
+        previous->next = block->next;
+    }
+
+    --active_frame_count;
+}
 
 inline constexpr std::uint8_t invalid_deadline_epoch = 0xFFU;
 inline constexpr std::uint8_t epoch_mask = 0x03U;
@@ -106,35 +268,6 @@ inline void consider_next_deadline(std::uint32_t deadline, std::uint8_t epoch) n
     }
 }
 
-inline void* alloc_frame(std::size_t size) noexcept {
-#ifdef TINYAWAIT_TESTING
-    last_frame_bytes = size;
-    if (size > max_frame_bytes) max_frame_bytes = size;
-#endif
-    if (size > TINYAWAIT_FRAME_SIZE) return nullptr;
-
-    void* frame = free_frame_head;
-    if (frame) {
-        std::memcpy(&free_frame_head, frame, sizeof(free_frame_head));
-    } else {
-        if (static_cast<std::size_t>(next_unused_frame) >= TINYAWAIT_MAX_TASKS) return nullptr;
-        frame = frame_pool[next_unused_frame].bytes;
-        ++next_unused_frame;
-    }
-#ifdef TINYAWAIT_TESTING
-    ++active_frame_count;
-#endif
-    return frame;
-}
-
-inline void free_frame(void* ptr) noexcept {
-    std::memcpy(ptr, &free_frame_head, sizeof(free_frame_head));
-    free_frame_head = ptr;
-#ifdef TINYAWAIT_TESTING
-    --active_frame_count;
-#endif
-}
-
 inline bool add_timer(std::uint32_t delay, std::coroutine_handle<> handle) noexcept {
     const auto now = static_cast<std::uint32_t>(TINYAWAIT_NOW_MS());
     if (active_timer_count == 0) {
@@ -179,6 +312,7 @@ struct DelayAwaiter {
 } // namespace detail
 
 inline constexpr std::uint32_t max_delay_ms = ~std::uint32_t{0};
+inline constexpr std::size_t frame_pool_bytes = detail::frame_pool_usable_bytes;
 
 struct Async {
     struct promise_type;
@@ -213,8 +347,9 @@ struct Async {
         bool detached = false;
 
         static void* operator new(std::size_t size) noexcept { return detail::alloc_frame(size); }
-        static void operator delete(void* ptr) noexcept { detail::free_frame(ptr); }
-        static void operator delete(void* ptr, std::size_t) noexcept { detail::free_frame(ptr); }
+        static void operator delete(void* ptr, std::size_t size) noexcept {
+            detail::free_frame(ptr, size);
+        }
         static Async get_return_object_on_allocation_failure() noexcept {
             TINYAWAIT_ON_ERROR();
             return {};
@@ -235,6 +370,7 @@ struct Async {
         FinalAwaiter final_suspend() const noexcept { return {detached}; }
         void return_void() const noexcept {}
         void unhandled_exception() const noexcept { TINYAWAIT_ON_ERROR(); }
+
         template <typename T>
             requires (std::is_integral_v<T> && !std::is_same_v<std::remove_cv_t<T>, bool>)
         detail::DelayAwaiter await_transform(T ms) const noexcept {
@@ -253,7 +389,10 @@ struct Async {
             }
             return {static_cast<std::uint32_t>(ms)};
         }
-        Async&& await_transform(Async&& child) const noexcept { return static_cast<Async&&>(child); }
+
+        Async&& await_transform(Async&& child) const noexcept {
+            return static_cast<Async&&>(child);
+        }
     };
 
 private:
@@ -311,11 +450,16 @@ inline void poll() noexcept {
 #ifdef TINYAWAIT_TESTING
 inline std::size_t last_frame_size() noexcept { return detail::last_frame_bytes; }
 inline std::size_t max_frame_size() noexcept { return detail::max_frame_bytes; }
-inline std::size_t active_frames() noexcept { return detail::active_frame_count; }
+inline std::size_t active_frames() noexcept {
+    return static_cast<std::size_t>(detail::active_frame_count);
+}
 inline std::size_t active_timers() noexcept {
     std::size_t count = 0;
     for (const auto& timer : detail::timers) count += timer.handle ? 1U : 0U;
     return count;
+}
+inline std::size_t frame_allocator_max_search() noexcept {
+    return detail::frame_alloc_search_max;
 }
 #endif
 
