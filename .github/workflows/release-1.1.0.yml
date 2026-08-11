@@ -1,21 +1,24 @@
 name: Publish TinyAwait 1.1.0
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/release-1.1.0.yml
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 permissions:
   contents: write
 
 jobs:
   release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     steps:
       - name: Publish v1.1.0
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
 
@@ -41,13 +44,13 @@ jobs:
 
           ### Verification
 
-          The release is gated by GCC and Clang host tests, allocator-focused checks at `-O0`, `-O2`, and `-Os`, ASan/UBSan, a size-oriented build, and Arduino-ESP32 3.3.11 example compilation.
+          The release is published only after the full CI workflow succeeds on `main`. CI covers GCC and Clang host tests, allocator-focused checks at `-O0`, `-O2`, and `-Os`, ASan/UBSan, a size-oriented build, and Arduino-ESP32 3.3.11 example compilation.
 
           See `README.md`, `BENCHMARKS.md`, and `VERIFICATION.md` for memory configuration, performance trade-offs, and design limits.
           EOF
 
           gh release create "$tag" \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
+            --target "$RELEASE_SHA" \
             --title "TinyAwait 1.1.0" \
             --notes-file "$RUNNER_TEMP/release-notes.md"
