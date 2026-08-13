@@ -1,10 +1,11 @@
 # Verification Report — TinyAwait 1.1.1
 
-TinyAwait 1.1.1 simplifies frame-memory configuration without changing the scheduler, coroutine syntax, or variable-size frame allocator introduced in 1.1.0.
+TinyAwait 1.1.1 simplifies frame-memory configuration without changing the scheduler, coroutine syntax, or variable-size frame allocator introduced in 1.1.0. Changes after the 1.1.1 release also replace the hard language-version gate with direct coroutine capability checks while keeping C++20 as the current source/build policy.
 
 ## Configuration under review
 
-- header-only C++20 implementation
+- header-only C++20 source/build mode
+- direct compiler and standard-library coroutine capability checks
 - fixed total frame-memory arena
 - variable-size coroutine frames
 - fixed maximum live-frame count
@@ -25,6 +26,18 @@ void loop() {
     tinyawait::poll();
 }
 ```
+
+## Toolchain capability checks
+
+TinyAwait checks the coroutine capabilities it actually uses rather than rejecting a toolchain only from its `__cplusplus` value.
+
+At include time it verifies:
+
+- compiler coroutine support through `__cpp_impl_coroutine`;
+- availability of the standard `<coroutine>` header when `__has_include` is available;
+- standard-library coroutine support through `__cpp_lib_coroutine`.
+
+If a required capability is missing, compilation stops with a TinyAwait-specific error. The current implementation still contains C++20 language constructs and the CMake interface target still requests `cxx_std_20`; this capability check does not claim C++17 compatibility.
 
 ## Memory configuration
 
@@ -57,7 +70,7 @@ Free-span metadata lives inside memory that is already free and is read and writ
 
 ## Host validation
 
-The release candidate is checked with GCC and Clang. Allocator-focused tests run at `-O0`, `-O2`, and `-Os`, with warnings treated as errors and exceptions/RTTI disabled.
+The current code is checked with GCC and Clang. Allocator-focused tests run at `-O0`, `-O2`, and `-Os`, with warnings treated as errors and exceptions/RTTI disabled.
 
 Coverage includes:
 
@@ -82,7 +95,7 @@ ASan/UBSan is also part of the repository CI gate.
 
 ## Repository CI gate
 
-The exact release candidate must pass:
+Changes intended for `main` should pass:
 
 - full host suite with GCC;
 - full host suite with Clang;
@@ -151,6 +164,8 @@ The no-heap regression test instruments global allocation while running repeated
 
 Version 1.1.1 does not change the allocator or scheduler runtime paths. The 1.1.0 performance comparison therefore remains applicable.
 
+The later coroutine-capability detection change is compile-time-only and does not alter the scheduler, allocator, coroutine frame layout, or runtime timing paths.
+
 The timer fast path is unchanged, and the variable-size arena keeps its bump, LIFO, free-span reuse, and coalescing behavior.
 
 See [BENCHMARKS.md](BENCHMARKS.md) for measurements and limitations.
@@ -159,6 +174,7 @@ See [BENCHMARKS.md](BENCHMARKS.md) for measurements and limitations.
 
 - TinyAwait is cooperative, single-threaded, and not ISR-safe.
 - `poll()` is not reentrant.
+- The current source/build policy is C++20 even though coroutine support is feature-detected directly.
 - The frame arena has a fixed build-time size and never grows.
 - Variable-size allocation can suffer external fragmentation; a frame needs one sufficiently large contiguous span.
 - Live coroutine frames cannot be compacted or moved.
@@ -170,10 +186,10 @@ See [BENCHMARKS.md](BENCHMARKS.md) for measurements and limitations.
 
 ## Release checklist
 
-Before publishing 1.1.1:
+Before a future release:
 
 - all CI jobs must be green on the exact merge candidate;
 - version metadata must agree across CMake, Arduino, and PlatformIO files;
-- README, benchmarks, changelog, and this report must describe the simplified configuration;
-- the release tag must point to the merged `main` commit;
+- README, benchmarks, changelog, verification notes, package metadata, and Arduino keywords must agree with the public API and toolchain requirements;
+- the release tag must point to the intended merged `main` commit;
 - no temporary release helper should remain after the release is confirmed.
