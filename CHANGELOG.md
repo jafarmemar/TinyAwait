@@ -1,12 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.1.2 - 2026-08-13
 
 - Replaced the hard `__cplusplus` version gate with direct compiler and standard-library coroutine capability checks.
 - TinyAwait now reports a clear error when compiler coroutine support, `<coroutine>`, or standard-library coroutine support is missing.
-- Kept C++20 as the current source/build policy; this does not add C++17 compatibility.
+- Kept C++20 as the current source/build policy; this release does not add C++17 compatibility.
 - Synchronized Arduino and PlatformIO metadata with the capability-based requirement.
 - Updated Arduino IDE keywords for the current frame-pool API while retaining highlighting for the deprecated `TINYAWAIT_FRAME_SIZE` compatibility macro.
+- Updated public documentation and verification notes so toolchain requirements and release metadata are consistent.
+- Scheduler, allocator, coroutine frame layout, timing behavior, and the public `Async` / `co_await` API are unchanged from 1.1.1.
 
 ## 1.1.1 - 2026-08-11
 

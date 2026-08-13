@@ -18,7 +18,7 @@ The delay is in milliseconds. Only the current coroutine pauses; the main loop a
 
 TinyAwait is header-only, uses fixed total memory, does not fall back to the heap, and does not create threads or RTOS tasks.
 
-> **Current version: 1.1.1.**
+> **Current version: 1.1.2.**
 
 ## Highlights
 
