@@ -6,7 +6,8 @@ Before adding a feature, first ask whether it belongs in a small non-blocking de
 
 ## Code style
 
-- Use C++20 and keep the public API simple.
+- Use C++20 for the current source/build policy and keep the public API simple.
+- Keep coroutine requirements capability-based; do not infer compiler/library coroutine support from `__cplusplus` alone.
 - Use 4 spaces for indentation. Do not use tabs.
 - Put opening braces on the same line as the declaration or statement.
 - Prefer descriptive names over short abbreviations outside tight local loops.
@@ -56,6 +57,6 @@ If a simpler candidate is slightly slower but removes a correctness or portabili
 
 ## Documentation
 
-Keep public documentation direct and practical. Explain configuration, limits, and failure behavior in plain language. Avoid marketing-style claims and do not call a target verified unless it was actually built or tested with that target's toolchain or hardware.
+Keep public documentation direct and practical. Explain configuration, limits, toolchain requirements, and failure behavior in plain language. Avoid marketing-style claims and do not call a target verified unless it was actually built or tested with that target's toolchain or hardware.
 
 Examples and public API documentation should remain in English.
