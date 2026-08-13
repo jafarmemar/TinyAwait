@@ -6,10 +6,20 @@
 #include <limits>
 #include <type_traits>
 
-#if __cplusplus < 202002L
-#error "TinyAwait requires C++20 or newer"
+#if !defined(__cpp_impl_coroutine) || __cpp_impl_coroutine < 201902L
+#error "TinyAwait requires coroutine support from the compiler and standard library"
+#endif
+
+#if defined(__has_include)
+#if !__has_include(<coroutine>)
+#error "TinyAwait requires coroutine support from the compiler and standard library"
+#endif
 #endif
 #include <coroutine>
+
+#if !defined(__cpp_lib_coroutine) || __cpp_lib_coroutine < 201902L
+#error "TinyAwait requires coroutine support from the compiler and standard library"
+#endif
 
 #ifndef TINYAWAIT_MAX_TASKS
 #define TINYAWAIT_MAX_TASKS 32
