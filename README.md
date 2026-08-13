@@ -1,6 +1,6 @@
 # TinyAwait
 
-**Tiny, heap-free C++20 `co_await` delays for microcontrollers and embedded systems.**
+**Tiny, heap-free `co_await` delays for microcontrollers and embedded systems.**
 
 [![CI](https://github.com/jafarmemar/TinyAwait/actions/workflows/ci.yml/badge.svg)](https://github.com/jafarmemar/TinyAwait/actions/workflows/ci.yml)
 
@@ -24,7 +24,8 @@ TinyAwait is header-only, uses fixed total memory, does not fall back to the hea
 
 - `co_await 500;` for readable non-blocking delays
 - `co_await child();` for parent/child sequencing
-- C++20, header-only
+- direct compiler and standard-library coroutine capability checks
+- current source/build mode: C++20, header-only
 - fixed total coroutine-frame memory
 - variable-size coroutine frames inside that fixed budget
 - no heap fallback or dynamic STL container
@@ -78,7 +79,21 @@ void loop() {
 }
 ```
 
-The board toolchain still needs C++20 coroutine support.
+The board toolchain must provide coroutine support from both the compiler and the standard library.
+
+### Toolchain requirement
+
+TinyAwait checks the capability it actually depends on instead of rejecting a toolchain only from its `__cplusplus` value.
+
+At include time TinyAwait verifies:
+
+- compiler coroutine support through `__cpp_impl_coroutine`;
+- availability of the standard `<coroutine>` header;
+- standard-library coroutine support through `__cpp_lib_coroutine`.
+
+If those capabilities are missing, compilation stops with a clear TinyAwait error stating that coroutine support is required.
+
+The current release still uses C++20 language features and the CMake interface target still requests `cxx_std_20`. This change does **not** add C++17 compatibility yet; it separates the real coroutine capability requirement from a hard-coded language-version check so a future compatibility mode can relax the language standard without changing the TinyAwait API.
 
 ## Child coroutines
 
@@ -228,11 +243,11 @@ Any other target can provide a monotonic `uint32_t` millisecond source.
 | Linux x86_64 / GCC | Host test suite in CI |
 | Linux x86_64 / Clang | Host test suite in CI |
 | Arduino examples / Arduino-ESP32 3.3.11 | Compile-checked in CI |
-| Other C++20-capable Arduino cores | Expected; toolchain support required |
-| ESP-IDF / ESP32 | Expected with a C++20-capable toolchain |
-| STM32 / ARM Cortex-M | Expected with a C++20-capable toolchain |
-| RP2040 / RP2350 | Expected with a C++20-capable toolchain |
-| Embedded RISC-V | Expected with a C++20-capable toolchain |
+| Other C++20-capable Arduino cores | Expected when compiler and standard library provide coroutine support |
+| ESP-IDF / ESP32 | Expected with a coroutine-capable C++20 toolchain |
+| STM32 / ARM Cortex-M | Expected with a coroutine-capable C++20 toolchain |
+| RP2040 / RP2350 | Expected with a coroutine-capable C++20 toolchain |
+| Embedded RISC-V | Expected with a coroutine-capable C++20 toolchain |
 | Classic AVR Uno/Nano/Mega toolchains | Not advertised as supported |
 
 `Expected` means the design is portable to the target, not that the target has been hardware-tested.
@@ -266,7 +281,9 @@ Install the repository ZIP with **Sketch → Include Library → Add .ZIP Librar
 
 ### PlatformIO
 
-`library.json` is included. The consuming project must enable C++20 because `co_await` appears in application code as well as the library.
+`library.json` is included. Do not add `-std=gnu++20` solely for TinyAwait when the selected platform already compiles the application in a C++20-or-newer mode with coroutine support. TinyAwait now checks coroutine capability directly.
+
+The current release still contains C++20 language constructs, so an environment that defaults below C++20 is not yet supported without additional compatibility work.
 
 ### CMake / generic C++
 
@@ -276,7 +293,7 @@ Copy `src/TinyAwait.h` into your include path, or use the provided interface tar
 target_link_libraries(your_target PRIVATE TinyAwait::TinyAwait)
 ```
 
-When TinyAwait is included as a subproject, tests and benchmarks are disabled by default.
+The CMake interface target currently requests C++20. When TinyAwait is included as a subproject, tests and benchmarks are disabled by default.
 
 ## Design limits
 
