@@ -1,0 +1,216 @@
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x10cc
+load:0x403c8700,len:0xc2c
+load:0x403cb700,len:0x30b0
+entry 0x403c88b8
+================================================================
+TinyAwait ESP32-S3 Hardware Stress Validation V2
+================================================================
+Chip                : ESP32-S3 rev 2
+CPU frequency       : 240 MHz
+Flash size          : 8388608 bytes
+PSRAM size          : 0 bytes
+Free heap at boot   : 353888 bytes
+ESP-IDF             : v5.5.5
+C++ __cplusplus     : 202002
+Arduino-ESP32       : 3.3.11 (PlatformIO pinned)
+TinyAwait version   : 1.1.2
+TinyAwait commit    : 868304d548074a07274665ebe4d3fb26854c4f14
+TinyAwait frame pool: 4096 bytes
+TinyAwait max tasks : 32
+Clock mode          : Arduino millis() (fake clock only in wrap test)
+================================================================
+
+Commands:
+  run     - run the complete V2 stress validation
+  ping    - prove Serial remains responsive during stress
+  status  - show V2 phase, scheduler, heap/error counters
+  info    - print board/build information
+  help    - show this help
+
+[AUTO] V2 stress validation starts automatically in 2000 ms.
+
+Commands:
+  run     - run the complete V2 stress validation
+  ping    - prove Serial remains responsive during stress
+  status  - show V2 phase, scheduler, heap/error counters
+  info    - print board/build information
+  help    - show this help
+
+================================================================
+TinyAwait ESP32-S3 Hardware Stress Validation V2
+================================================================
+Chip                : ESP32-S3 rev 2
+CPU frequency       : 240 MHz
+Flash size          : 8388608 bytes
+PSRAM size          : 0 bytes
+Free heap at boot   : 353888 bytes
+ESP-IDF             : v5.5.5
+C++ __cplusplus     : 202002
+Arduino-ESP32       : 3.3.11 (PlatformIO pinned)
+TinyAwait version   : 1.1.2
+TinyAwait commit    : 868304d548074a07274665ebe4d3fb26854c4f14
+TinyAwait frame pool: 4096 bytes
+TinyAwait max tasks : 32
+Clock mode          : Arduino millis() (fake clock only in wrap test)
+================================================================
+[V2 STATUS] suite=IDLE | phase=IDLE | uptime=592 ms | elapsed=0 ms | frames=0 | timers=0 | max_frames=0 | errors=0/0 | scheduler=0/0 | soak=0/0
+================================================================
+[V2 SUITE] START
+[V2 SUITE] Real ESP32-S3 stress validation; no simulated scheduler
+================================================================
+[HEAP] before-stress free=353888 min=348576 largest=294900 caps_free=353888 caps_largest=294900 caps_min=348576
+[V2 TEST 01] capacity 32/33                     PASS | accepted=32 frames/32 timers | rejected=exactly one error | after=0/0
+[V2 TEST 02] invalid delay validation           PASS | expected_errors=2 actual_errors=2 | after=0/0
+[V2 TEST 03] uint32 wrap + max delay            PASS | no early fire; fired after UINT32_MAX elapsed ms; clean
+[STRESS] mixed-batches 100 / 600 | frames=0 | timers=0 | errors=3
+[STRESS] mixed-batches 200 / 600 | frames=0 | timers=0 | errors=3
+[STRESS] mixed-batches 300 / 600 | frames=0 | timers=0 | errors=3
+[STRESS] mixed-batches 400 / 600 | frames=0 | timers=0 | errors=3
+[PONG] uptime=7614 ms | suite=RUNNING | phase=MIXED_FRAMES | frames=6 | timers=6
+[STRESS] mixed-batches 500 / 600 | frames=0 | timers=0 | errors=3
+[STRESS] mixed-batches 600 / 600 | frames=0 | timers=0 | errors=3
+[V2 TEST 04] mixed real coroutine frames        PASS | batches=600 done=5400 checksum=4582832/4582832 max_frame=280 search=1
+[STRESS] allocator-ops 10000 / 250000 | frames=23 | timers=0 | errors=3
+[STRESS] allocator-ops 20000 / 250000 | frames=18 | timers=0 | errors=3
+[STRESS] allocator-ops 30000 / 250000 | frames=30 | timers=0 | errors=3
+[STRESS] allocator-ops 40000 / 250000 | frames=12 | timers=0 | errors=3
+[STRESS] allocator-ops 50000 / 250000 | frames=23 | timers=0 | errors=3
+[STRESS] allocator-ops 60000 / 250000 | frames=20 | timers=0 | errors=3
+[STRESS] allocator-ops 70000 / 250000 | frames=23 | timers=0 | errors=3
+[STRESS] allocator-ops 80000 / 250000 | frames=17 | timers=0 | errors=3
+[STRESS] allocator-ops 90000 / 250000 | frames=15 | timers=0 | errors=3
+[STRESS] allocator-ops 100000 / 250000 | frames=21 | timers=0 | errors=3
+[STRESS] allocator-ops 110000 / 250000 | frames=24 | timers=0 | errors=3
+[STRESS] allocator-ops 120000 / 250000 | frames=13 | timers=0 | errors=3
+[STRESS] allocator-ops 130000 / 250000 | frames=25 | timers=0 | errors=3
+[STRESS] allocator-ops 140000 / 250000 | frames=18 | timers=0 | errors=3
+[STRESS] allocator-ops 150000 / 250000 | frames=27 | timers=0 | errors=3
+[STRESS] allocator-ops 160000 / 250000 | frames=25 | timers=0 | errors=3
+[STRESS] allocator-ops 170000 / 250000 | frames=16 | timers=0 | errors=3
+[STRESS] allocator-ops 180000 / 250000 | frames=24 | timers=0 | errors=3
+[STRESS] allocator-ops 190000 / 250000 | frames=22 | timers=0 | errors=3
+[STRESS] allocator-ops 200000 / 250000 | frames=27 | timers=0 | errors=3
+[STRESS] allocator-ops 210000 / 250000 | frames=28 | timers=0 | errors=3
+[STRESS] allocator-ops 220000 / 250000 | frames=18 | timers=0 | errors=3
+[STRESS] allocator-ops 230000 / 250000 | frames=12 | timers=0 | errors=3
+[STRESS] allocator-ops 240000 / 250000 | frames=22 | timers=0 | errors=3
+[STRESS] allocator-ops 250000 / 250000 | frames=27 | timers=0 | errors=3
+[V2 TEST 05] allocator fuzz 250000 ops          PASS | ops=250000 recovered=YES max_frame=4096 search=1->18 active=0/0
+[PONG] uptime=12559 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=13 | timers=13
+[PONG] uptime=17582 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=6 | timers=6
+[STRESS] scheduler-completions 50000 / 500000 | frames=0 | timers=0 | errors=3
+[PONG] uptime=22560 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=6 | timers=6
+[STRESS] scheduler-completions 100000 / 500000 | frames=0 | timers=0 | errors=3
+[PONG] uptime=27548 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=6 | timers=6
+[PONG] uptime=32544 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=20 | timers=20
+[V2 STATUS] suite=RUNNING | phase=SCHEDULER_STRESS | uptime=32544 ms | elapsed=30159 ms | frames=20 | timers=20 | max_frames=32 | errors=3/3 | scheduler=140560/140580 | soak=0/0
+[STRESS] scheduler-completions 150000 / 500000 | frames=0 | timers=0 | errors=3
+[PONG] uptime=37555 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=6 | timers=6
+[STRESS] scheduler-completions 200000 / 500000 | frames=0 | timers=0 | errors=3
+[PONG] uptime=42562 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=6 | timers=6
+[PONG] uptime=47541 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=13 | timers=13
+[STRESS] scheduler-completions 250000 / 500000 | frames=0 | timers=0 | errors=3
+[PONG] uptime=52543 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=6 | timers=6
+[STRESS] scheduler-completions 300000 / 500000 | frames=0 | timers=0 | errors=3
+[PONG] uptime=57558 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=13 | timers=13
+[PONG] uptime=62614 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=6 | timers=6
+[V2 STATUS] suite=RUNNING | phase=SCHEDULER_STRESS | uptime=62614 ms | elapsed=60229 ms | frames=6 | timers=6 | max_frames=32 | errors=3/3 | scheduler=340894/340900 | soak=0/0
+[STRESS] scheduler-completions 350000 / 500000 | frames=0 | timers=0 | errors=3
+[PONG] uptime=67551 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=20 | timers=20
+[STRESS] scheduler-completions 400000 / 500000 | frames=0 | timers=0 | errors=3
+[PONG] uptime=72583 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=13 | timers=13
+[PONG] uptime=77545 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=13 | timers=13
+[STRESS] scheduler-completions 450000 / 500000 | frames=0 | timers=0 | errors=3
+[PONG] uptime=82558 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=20 | timers=20
+[STRESS] scheduler-completions 500000 / 500000 | frames=0 | timers=0 | errors=3
+[PONG] uptime=87587 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=6 | timers=6
+[PONG] uptime=92554 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=13 | timers=13
+[V2 STATUS] suite=RUNNING | phase=SCHEDULER_STRESS | uptime=92554 ms | elapsed=90169 ms | frames=13 | timers=13 | max_frames=32 | errors=3/3 | scheduler=540347/540360 | soak=0/0
+[STRESS] scheduler-completions 550000 / 100000 | frames=0 | timers=0 | errors=3
+[PONG] uptime=97595 ms | suite=RUNNING | phase=SCHEDULER_STRESS | frames=20 | timers=20
+[STRESS] scheduler-completions 600000 / 100000 | frames=0 | timers=0 | errors=3
+[V2 TEST 06] 600000 timer/coroutine ops         PASS | main=500000 repeat=100000 total=600000 started=600000 active=0/0
+[PONG] uptime=102611 ms | suite=RUNNING | phase=HEAP_STABILITY | frames=0 | timers=0
+[HEAP] after-scheduler free=353888 min=348544 largest=294900 caps_free=353888 caps_largest=294900 caps_min=348544
+[V2 TEST 07] heap stability                     PASS | free=353888->353888 delta=0 | largest=294900->294900 delta=0
+[PONG] uptime=107534 ms | suite=RUNNING | phase=180S_SOAK | frames=17 | timers=14
+[PONG] uptime=112609 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[SOAK] elapsed=10000 started=4863 completed=4849 frames=17 timers=14 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=117554 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[PONG] uptime=122527 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[V2 STATUS] suite=RUNNING | phase=180S_SOAK | uptime=122527 ms | elapsed=120142 ms | frames=16 | timers=14 | max_frames=32 | errors=3/3 | scheduler=600000/600000 | soak=9202/9216
+[SOAK] elapsed=20000 started=9702 completed=9687 frames=16 timers=15 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=127541 ms | suite=RUNNING | phase=180S_SOAK | frames=17 | timers=15
+[PONG] uptime=132613 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=13
+[SOAK] elapsed=30000 started=14551 completed=14537 frames=16 timers=14 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=137534 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=13
+[PONG] uptime=142608 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[SOAK] elapsed=40000 started=19399 completed=19385 frames=16 timers=14 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=147544 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[PONG] uptime=152625 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[V2 STATUS] suite=RUNNING | phase=180S_SOAK | uptime=152625 ms | elapsed=150240 ms | frames=16 | timers=14 | max_frames=32 | errors=3/3 | scheduler=600000/600000 | soak=23786/23800
+[SOAK] elapsed=50000 started=24239 completed=24225 frames=16 timers=14 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=157535 ms | suite=RUNNING | phase=180S_SOAK | frames=17 | timers=15
+[PONG] uptime=162612 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[SOAK] elapsed=60000 started=29089 completed=29075 frames=16 timers=14 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=167534 ms | suite=RUNNING | phase=180S_SOAK | frames=17 | timers=14
+[PONG] uptime=172612 ms | suite=RUNNING | phase=180S_SOAK | frames=17 | timers=15
+[SOAK] elapsed=70000 started=33935 completed=33921 frames=16 timers=14 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=177553 ms | suite=RUNNING | phase=180S_SOAK | frames=17 | timers=15
+[PONG] uptime=182529 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[V2 STATUS] suite=RUNNING | phase=180S_SOAK | uptime=182529 ms | elapsed=180144 ms | frames=16 | timers=14 | max_frames=32 | errors=3/3 | scheduler=600000/600000 | soak=38279/38293
+[SOAK] elapsed=80000 started=38778 completed=38763 frames=16 timers=15 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=187550 ms | suite=RUNNING | phase=180S_SOAK | frames=17 | timers=15
+[PONG] uptime=192528 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=15
+[SOAK] elapsed=90000 started=43627 completed=43614 frames=16 timers=13 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=197548 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[PONG] uptime=202629 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=15
+[SOAK] elapsed=100000 started=48474 completed=48459 frames=16 timers=15 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=207536 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=15
+[PONG] uptime=212621 ms | suite=RUNNING | phase=180S_SOAK | frames=17 | timers=15
+[V2 STATUS] suite=RUNNING | phase=180S_SOAK | uptime=212622 ms | elapsed=210237 ms | frames=17 | timers=15 | max_frames=32 | errors=3/3 | scheduler=600000/600000 | soak=52860/52875
+[SOAK] elapsed=110000 started=53313 completed=53298 frames=16 timers=15 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=217543 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=15
+[PONG] uptime=222611 ms | suite=RUNNING | phase=180S_SOAK | frames=17 | timers=15
+[SOAK] elapsed=120000 started=58164 completed=58151 frames=16 timers=13 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=227538 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=13
+[PONG] uptime=232618 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[SOAK] elapsed=130000 started=63012 completed=62997 frames=16 timers=15 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=237545 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=15
+[PONG] uptime=242620 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[V2 STATUS] suite=RUNNING | phase=180S_SOAK | uptime=242620 ms | elapsed=240235 ms | frames=16 | timers=14 | max_frames=32 | errors=3/3 | scheduler=600000/600000 | soak=67398/67412
+[SOAK] elapsed=140000 started=67852 completed=67837 frames=16 timers=15 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=247543 ms | suite=RUNNING | phase=180S_SOAK | frames=17 | timers=15
+[PONG] uptime=252628 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=15
+[SOAK] elapsed=150000 started=72702 completed=72688 frames=16 timers=14 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=257551 ms | suite=RUNNING | phase=180S_SOAK | frames=17 | timers=14
+[PONG] uptime=262546 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[SOAK] elapsed=160000 started=77547 completed=77533 frames=16 timers=14 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=267544 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[PONG] uptime=272638 ms | suite=RUNNING | phase=180S_SOAK | frames=17 | timers=15
+[V2 STATUS] suite=RUNNING | phase=180S_SOAK | uptime=272638 ms | elapsed=270253 ms | frames=17 | timers=15 | max_frames=32 | errors=3/3 | scheduler=600000/600000 | soak=81941/81956
+[SOAK] elapsed=170000 started=82387 completed=82372 frames=16 timers=15 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[PONG] uptime=277554 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[PONG] uptime=282634 ms | suite=RUNNING | phase=180S_SOAK | frames=16 | timers=14
+[SOAK] elapsed=180000 started=87239 completed=87225 frames=17 timers=14 free_heap=353888 max_frame=4096 allocator_search=18 errors=3
+[V2 TEST 08] 180-second continuous soak         PASS | started=87239 completed=87239 checksum=993117862 frames=0 timers=0
+[HEAP] final free=353888 min=348536 largest=294900 caps_free=353888 caps_largest=294900 caps_min=348536
+[V2 TEST 09] final scheduler cleanup            PASS | frames=0 timers=0 expected_errors=3 actual_errors=3
+================================================================
+[V2 METRICS] runtime_ms=281216 scheduler_started=600000 scheduler_completed=600000
+[V2 METRICS] frame_pool_bytes=4096 max_frame_size=4096 allocator_max_search=18
+[V2 METRICS] max_concurrent_frames=32 mixed_done=5400 mixed_checksum=4582832
+[V2 METRICS] soak_started=87239 soak_completed=87239 soak_checksum=993117862
+[V2 METRICS] heap_before=353888 heap_after=353888 heap_delta=0 largest_before=294900 largest_after=294900 largest_delta=0
+[V2 METRICS] final_active_frames=0 final_active_timers=0 expected_errors=3 unexpected_errors=0
+[V2 SUMMARY] passed=9 failed=0 total=9
+[V2 RESULT] TINYAWAIT_ESP32S3_STRESS_VALIDATION=PASS
+================================================================
+Type 'run' to repeat V2, or 'help' for commands.
+[V2 STATUS] suite=IDLE | phase=IDLE | uptime=283803 ms | elapsed=0 ms | frames=0 | timers=0 | max_frames=32 | errors=3/3 | scheduler=600000/600000 | soak=87239/87239
+[PONG] uptime=283814 ms | suite=IDLE | phase=IDLE | frames=0 | timers=0

@@ -1,0 +1,128 @@
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x10cc
+load:0x403c8700,len:0xc2c
+load:0x403cb700,len:0x30b0
+entry 0x403c88b8
+----------------------------------------------------------------
+TinyAwait ESP32-S3 Real Hardware Validation
+----------------------------------------------------------------
+Chip                : ESP32-S3 rev 2
+CPU frequency       : 240 MHz
+Flash size          : 8388608 bytes
+PSRAM size          : 0 bytes
+Free heap at boot   : 354480 bytes
+ESP-IDF             : v5.5.5
+C++ __cplusplus     : 202002
+TinyAwait commit    : 868304d548074a07274665ebe4d3fb26854c4f14
+TinyAwait frame pool: 4096 bytes
+TinyAwait max tasks : 32
+----------------------------------------------------------------
+
+Commands:
+  run     - run the complete TinyAwait hardware test again
+  ping    - prove Serial + Arduino loop stay responsive
+  status  - show scheduler/test status
+  info    - print board/build information
+  help    - show this help
+
+[AUTO] Complete test starts automatically in 2000 ms.
+
+Commands:
+  run     - run the complete TinyAwait hardware test again
+  ping    - prove Serial + Arduino loop stay responsive
+  status  - show scheduler/test status
+  info    - print board/build information
+  help    - show this help
+
+----------------------------------------------------------------
+TinyAwait ESP32-S3 Real Hardware Validation
+----------------------------------------------------------------
+Chip                : ESP32-S3 rev 2
+CPU frequency       : 240 MHz
+Flash size          : 8388608 bytes
+PSRAM size          : 0 bytes
+Free heap at boot   : 354480 bytes
+ESP-IDF             : v5.5.5
+C++ __cplusplus     : 202002
+TinyAwait commit    : 868304d548074a07274665ebe4d3fb26854c4f14
+TinyAwait frame pool: 4096 bytes
+TinyAwait max tasks : 32
+----------------------------------------------------------------
+[STATUS] suite=IDLE | uptime=566 ms | loop=18508 | frames=0 | timers=0 | max_frame=0 | alloc_search_max=0
+----------------------------------------------------------------
+[SUITE] START
+----------------------------------------------------------------
+[TEST 01] co_await 0 (immediate)         PASS | actual=0 ms | expected=0..2 ms
+[PONG] uptime=2507 ms | loop=302531 | suite=RUNNING
+[TEST 02] single non-blocking delay      PASS | actual=250 ms | expected=250..500 ms
+          loop delta=36546 | background tick delta=10
+[TEST 03] sequential delays              PASS | actual=360 ms | expected=360..660 ms
+          checkpoints=80, 200, 360 ms
+[TEST 04] nested child coroutine         PASS | actual=270 ms | expected=270..570 ms
+          child finished at=150 ms | child stage=2
+[TEST 05] detached concurrent tasks      PASS | 3 tasks should finish in order 1 -> 2 -> 3
+          order=1,2,3 | times=100,200,300 ms
+[TEST 06] repeating await loop           PASS | actual=300 ms | expected=300..600 ms
+          repetitions=5
+[TEST 07] scheduler cleanup              PASS | active_frames=0 | active_timers=0
+[METRICS] max_frame=84 bytes | frame_pool=4096 bytes | allocator_max_search=1
+----------------------------------------------------------------
+[SUMMARY] passed=7 | failed=0 | total=7
+[RESULT] TINYAWAIT_ESP32S3_HARDWARE_TEST=PASS
+----------------------------------------------------------------
+Type 'run' to repeat the suite, or 'help' for commands.
+[STATUS] suite=IDLE | uptime=5091 ms | loop=705758 | frames=0 | timers=0 | max_frame=84 | alloc_search_max=1
+[PONG] uptime=5091 ms | loop=705758 | suite=IDLE
+----------------------------------------------------------------
+[SUITE] START
+----------------------------------------------------------------
+[TEST 01] co_await 0 (immediate)         PASS | actual=0 ms | expected=0..2 ms
+[PONG] uptime=6101 ms | loop=881094 | suite=RUNNING
+[TEST 02] single non-blocking delay      PASS | actual=250 ms | expected=250..500 ms
+          loop delta=36540 | background tick delta=10
+[TEST 03] sequential delays              PASS | actual=360 ms | expected=360..660 ms
+          checkpoints=80, 200, 360 ms
+[TEST 04] nested child coroutine         PASS | actual=270 ms | expected=270..570 ms
+          child finished at=150 ms | child stage=2
+[TEST 05] detached concurrent tasks      PASS | 3 tasks should finish in order 1 -> 2 -> 3
+          order=1,2,3 | times=100,200,300 ms
+[TEST 06] repeating await loop           PASS | actual=300 ms | expected=300..600 ms
+          repetitions=5
+[TEST 07] scheduler cleanup              PASS | active_frames=0 | active_timers=0
+[METRICS] max_frame=84 bytes | frame_pool=4096 bytes | allocator_max_search=1
+----------------------------------------------------------------
+[SUMMARY] passed=7 | failed=0 | total=7
+[RESULT] TINYAWAIT_ESP32S3_HARDWARE_TEST=PASS
+----------------------------------------------------------------
+Type 'run' to repeat the suite, or 'help' for commands.
+[STATUS] suite=IDLE | uptime=8685 ms | loop=1284072 | frames=0 | timers=0 | max_frame=84 | alloc_search_max=1
+[PONG] uptime=8686 ms | loop=1284072 | suite=IDLE
+----------------------------------------------------------------
+[SUITE] START
+----------------------------------------------------------------
+[TEST 01] co_await 0 (immediate)         PASS | actual=0 ms | expected=0..2 ms
+[PONG] uptime=9698 ms | loop=1459695 | suite=RUNNING
+[TEST 02] single non-blocking delay      PASS | actual=250 ms | expected=250..500 ms
+          loop delta=36491 | background tick delta=10
+[TEST 03] sequential delays              PASS | actual=360 ms | expected=360..660 ms
+          checkpoints=80, 200, 360 ms
+[TEST 04] nested child coroutine         PASS | actual=270 ms | expected=270..570 ms
+          child finished at=150 ms | child stage=2
+[TEST 05] detached concurrent tasks      PASS | 3 tasks should finish in order 1 -> 2 -> 3
+          order=1,2,3 | times=100,200,300 ms
+[TEST 06] repeating await loop           PASS | actual=300 ms | expected=300..600 ms
+          repetitions=5
+[TEST 07] scheduler cleanup              PASS | active_frames=0 | active_timers=0
+[METRICS] max_frame=84 bytes | frame_pool=4096 bytes | allocator_max_search=1
+----------------------------------------------------------------
+[SUMMARY] passed=7 | failed=0 | total=7
+[RESULT] TINYAWAIT_ESP32S3_HARDWARE_TEST=PASS
+----------------------------------------------------------------
+Type 'run' to repeat the suite, or 'help' for commands.
+[STATUS] suite=IDLE | uptime=12291 ms | loop=1864472 | frames=0 | timers=0 | max_frame=84 | alloc_search_max=1
+[PONG] uptime=12292 ms | loop=1864472 | suite=IDLE
+[PONG] uptime=17206 ms | loop=2754424 | suite=IDLE
