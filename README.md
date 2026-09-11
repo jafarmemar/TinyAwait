@@ -34,6 +34,7 @@ TinyAwait is header-only, uses fixed total memory, does not fall back to the hea
 - wrap-safe 32-bit millisecond timing
 - O(1) nearest-deadline `poll()` fast path while no timer is due
 - no thread, mutex, lock, executor, or RTOS dependency
+- physical ESP32-S3 hardware validation with reproducible PlatformIO harnesses and raw Serial evidence
 
 ## Quick start
 
@@ -243,14 +244,23 @@ Any other target can provide a monotonic `uint32_t` millisecond source.
 | Linux x86_64 / GCC | Host test suite in CI |
 | Linux x86_64 / Clang | Host test suite in CI |
 | Arduino examples / Arduino-ESP32 3.3.11 | Compile-checked in CI |
+| ESP32-S3 / Arduino-ESP32 3.3.11 | **Hardware validated** on a physical ESP32-S3 |
 | Other C++20-capable Arduino cores | Expected when compiler and standard library provide coroutine support |
-| ESP-IDF / ESP32 | Expected with a coroutine-capable C++20 toolchain |
+| Other ESP-IDF / ESP32 configurations | Expected with a coroutine-capable C++20 toolchain |
 | STM32 / ARM Cortex-M | Expected with a coroutine-capable C++20 toolchain |
 | RP2040 / RP2350 | Expected with a coroutine-capable C++20 toolchain |
 | Embedded RISC-V | Expected with a coroutine-capable C++20 toolchain |
 | Classic AVR Uno/Nano/Mega toolchains | Not advertised as supported |
 
-`Expected` means the design is portable to the target, not that the target has been hardware-tested.
+`Hardware validated` means the recorded TinyAwait revision was exercised on a physical target with reproducible firmware, environment metadata, reports, and raw Serial evidence. `Expected` means the design is portable to the target, not that the target has been hardware-tested.
+
+### ESP32-S3 hardware validation
+
+TinyAwait 1.1.2 commit `868304d548074a07274665ebe4d3fb26854c4f14` was validated on a physical ESP32-S3 revision 2 at 240 MHz using PlatformIO Core 6.1.19, Arduino-ESP32 3.3.11, ESP-IDF 5.5.5, and C++20 over USB-to-UART.
+
+The usage-oriented V1 suite completed three consecutive 7/7 PASS runs without reboot. The extended V2 suite completed 9/9 PASS in 281,216 ms and exercised the 32/33-task capacity boundary, invalid-delay failure paths, `uint32_t` wraparound and `max_delay_ms`, mixed real coroutine frames, 250,000 allocator fuzz operations with full-pool recovery, 600,000 scheduler completions, zero-delta free-heap/largest-block checks, and a 180-second mixed workload with 87,239/87,239 task completions. Final state was `active_frames=0`, `active_timers=0`, with 3 expected and 0 unexpected TinyAwait errors. No unexpected reset, watchdog, Guru Meditation, panic, brownout, or reboot loop was observed.
+
+See [`hardware/esp32-s3/`](hardware/esp32-s3/) for the reproducible PlatformIO harnesses, detailed reports, scope notes, and raw Serial captures. Hardware validation is specific to the recorded board/toolchain/revision and complements rather than replaces the deterministic host CI suite.
 
 ## Multiple translation units
 
