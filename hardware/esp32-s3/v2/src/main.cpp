@@ -540,6 +540,7 @@ bool testAllocatorFuzz() {
         frame.pattern = static_cast<uint8_t>(0xA5U ^ (operation & 0xFFU));
         std::memset(frame.pointer, frame.pattern, frame.span);
       } else if (pointer) {
+        // This should be unreachable because alloc_frame enforces the task cap.
         tinyawait::detail::free_frame(pointer, requested);
         valid = false;
       }
@@ -592,6 +593,8 @@ bool testAllocatorFuzz() {
 }
 
 bool runSchedulerRounds(uint32_t totalOperations, bool reportProgress) {
+  const uint32_t completedAtStart = schedulerCompleted;
+  const uint32_t progressTotal = completedAtStart + totalOperations;
   const uint32_t rounds = totalOperations / 20U;
   for (uint32_t round = 0; round < rounds; ++round) {
     const uint32_t roundStartCompleted = schedulerCompleted;
@@ -609,11 +612,11 @@ bool runSchedulerRounds(uint32_t totalOperations, bool reportProgress) {
     if (tinyawait::active_frames() != 0 || tinyawait::active_timers() != 0) return false;
 
     if (reportProgress && (round + 1U) % 2500U == 0U) {
-      recordProgress("scheduler-completions", schedulerCompleted, totalOperations);
+      recordProgress("scheduler-completions", schedulerCompleted, progressTotal);
     }
   }
   return schedulerCompleted == schedulerStarted &&
-         schedulerCompleted >= totalOperations &&
+         schedulerCompleted - completedAtStart == totalOperations &&
          tinyawait::active_frames() == 0 && tinyawait::active_timers() == 0;
 }
 
