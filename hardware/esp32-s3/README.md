@@ -46,7 +46,7 @@ V2 completed 9/9 PASS in 281,216 ms (4 min 41.216 s). The recorded workload incl
 
 No unexpected reset, watchdog, Guru Meditation, panic, abort, brownout, or reboot loop was observed. Serial remained responsive during mixed-frame, scheduler, heap, and soak phases.
 
-The V2 source in this repository contains one documentation-only cleanup compared with the captured run: the repeat scheduler progress denominator is displayed cumulatively (`600000`) instead of producing cosmetic lines such as `550000 / 100000`. The scheduler logic, workload, pass/fail criteria, and preserved raw validation log are unchanged.
+The repository preserves the V2 harness exactly as tested. Its repeat scheduler pass has two cosmetic progress lines (`550000 / 100000` and `600000 / 100000`) because the completed counter is cumulative while that display uses the repeat-pass total. The final independent counters report `scheduler_started=600000` and `scheduler_completed=600000`, and the scheduler stress test passed with zero active frames/timers. The raw log is intentionally preserved rather than rewritten after validation.
 
 ## Reproduce
 
