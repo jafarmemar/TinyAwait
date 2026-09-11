@@ -1,6 +1,6 @@
-# Verification Report — TinyAwait 1.1.1
+# Verification Report — TinyAwait 1.1.2
 
-TinyAwait 1.1.1 simplifies frame-memory configuration without changing the scheduler, coroutine syntax, or variable-size frame allocator introduced in 1.1.0. Changes after the 1.1.1 release also replace the hard language-version gate with direct coroutine capability checks while keeping C++20 as the current source/build policy.
+TinyAwait 1.1.2 keeps the scheduler, coroutine syntax, variable-size frame arena, memory model, and public API from 1.1.1. This release replaces the hard language-version gate with direct coroutine capability checks and synchronizes public documentation and package metadata with that requirement while keeping C++20 as the current source/build policy.
 
 ## Configuration under review
 
@@ -162,7 +162,7 @@ The no-heap regression test instruments global allocation while running repeated
 
 ## Performance and size review
 
-Version 1.1.1 does not change the allocator or scheduler runtime paths. The 1.1.0 performance comparison therefore remains applicable.
+Version 1.1.2 does not change the allocator or scheduler runtime paths. The 1.1.0 performance comparison therefore remains applicable.
 
 The later coroutine-capability detection change is compile-time-only and does not alter the scheduler, allocator, coroutine frame layout, or runtime timing paths.
 
